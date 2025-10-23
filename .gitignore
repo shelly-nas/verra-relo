@@ -1,0 +1,18 @@
+# Virtual environment
+.venv/
+
+# Data files
+data/
+*.xlsx
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE
+.vscode/
+
+# Test files
+test_output.txt

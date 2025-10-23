@@ -1,0 +1,12 @@
+{
+  "fetch_urls": [
+    {
+      "name": "arbeid_regulier_kennismigranten",
+      "url": "https://ind.nl/nl/openbaar-register-erkende-referenten/openbaar-register-arbeid-regulier-kennismigranten"
+    },
+    {
+      "name": "wetenschappelijk_onderzoeker",
+      "url": "https://ind.nl/nl/openbaar-register-erkende-referenten/openbaar-register-wetenschappelijk-onderzoeker-richtlijn-eu-2016801"
+    }
+  ]
+}
