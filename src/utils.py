@@ -3,7 +3,7 @@ Utility functions for reading configuration and handling common tasks.
 """
 import json
 import os
-from typing import List, Union, Dict
+from typing import List, Dict
 
 
 def read_config(config_path: str = "config.json") -> dict:
@@ -35,28 +35,6 @@ def read_config(config_path: str = "config.json") -> dict:
         raise json.JSONDecodeError(f"Invalid JSON in configuration file: {e}")
 
 
-def get_fetch_urls(config_path: str = "config.json") -> List[Union[str, Dict[str, str]]]:
-    """
-    Get fetch URLs from configuration file.
-    Supports both old format (list of strings) and new format (list of dicts with name and url).
-    
-    Args:
-        config_path (str): Path to the configuration file
-        
-    Returns:
-        List[Union[str, Dict[str, str]]]: List of URLs or URL objects to fetch
-        
-    Raises:
-        KeyError: If 'fetch_urls' key is not found in config
-    """
-    config = read_config(config_path)
-    
-    if 'fetch_urls' not in config:
-        raise KeyError("'fetch_urls' key not found in configuration file")
-    
-    return config['fetch_urls']
-
-
 def get_url_objects(config_path: str = "config.json") -> List[Dict[str, str]]:
     """
     Get fetch URLs as standardized objects from configuration file.
@@ -72,7 +50,12 @@ def get_url_objects(config_path: str = "config.json") -> List[Dict[str, str]]:
         KeyError: If 'fetch_urls' key is not found in config
         ValueError: If URL object format is invalid
     """
-    urls = get_fetch_urls(config_path)
+    config = read_config(config_path)
+    
+    if 'fetch_urls' not in config:
+        raise KeyError("'fetch_urls' key not found in configuration file")
+    
+    urls = config['fetch_urls']
     url_objects = []
     
     for i, url_item in enumerate(urls):

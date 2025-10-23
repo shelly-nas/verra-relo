@@ -4,6 +4,7 @@ Implements a backup metadata system where CSV serves as the authoritative source
 """
 import pandas as pd
 import os
+import re
 from typing import Optional, List, Tuple, Dict
 import logging
 from datetime import datetime
@@ -236,6 +237,16 @@ class DataHandler:
             logger.error(f"Failed to load CSV backup from {csv_path}: {e}")
             return None
     
+    def _format_second_column_value(self, val):
+        """Helper function to format values in the second column consistently."""
+        if pd.isna(val) or val == '' or val == 'nan':
+            return ''
+        str_val = str(val)
+        # If it's a float ending in .0, remove the .0
+        if str_val.endswith('.0'):
+            str_val = str_val[:-2]
+        return str_val
+    
     def _format_dataframe_for_csv(self, df: pd.DataFrame) -> pd.DataFrame:
         """Format DataFrame for CSV storage, ensuring all data is preserved as strings."""
         df_copy = df.copy()
@@ -250,16 +261,7 @@ class DataHandler:
             
         if len(df_copy.columns) >= 2:
             # Handle numeric values in second column
-            def format_second_column(val):
-                if pd.isna(val) or val == '' or val == 'nan':
-                    return ''
-                str_val = str(val)
-                # If it's a float ending in .0, remove the .0
-                if str_val.endswith('.0'):
-                    str_val = str_val[:-2]
-                return str_val
-            
-            df_copy.iloc[:, 1] = df_copy.iloc[:, 1].apply(format_second_column)
+            df_copy.iloc[:, 1] = df_copy.iloc[:, 1].apply(self._format_second_column_value)
         
         return df_copy
     
@@ -414,70 +416,6 @@ class DataHandler:
             logger.error(f"Failed to write multi-sheet Excel file {filename}: {e}")
             raise
     
-    def write_excel(self, 
-                   dataframe: pd.DataFrame, 
-                   filename: str, 
-                   sheet_name: str = "data",
-                   index: bool = False) -> str:
-        """
-        Write a DataFrame to an Excel file and create CSV backup.
-        
-        Args:
-            dataframe (pd.DataFrame): DataFrame to write
-            filename (str): Name of the Excel file
-            sheet_name (str): Name of the sheet
-            index (bool): Whether to write row names (index)
-            
-        Returns:
-            str: Full path of the created file
-        """
-        filepath = self._write_excel_direct(dataframe, filename, sheet_name, index)
-        
-        # Create CSV backup
-        self._create_csv_backup(dataframe, filename, sheet_name)
-        
-        # Update metadata
-        self._update_file_metadata(filename, [sheet_name])
-        
-        logger.info(f"Successfully wrote DataFrame to {filename}")
-        logger.info(f"DataFrame shape: {dataframe.shape[0]} rows, {dataframe.shape[1]} columns")
-        return filepath
-    
-    def write_multiple_sheets(self, 
-                             dataframes: List[pd.DataFrame], 
-                             filename: str,
-                             sheet_names: Optional[List[str]] = None,
-                             index: bool = False) -> str:
-        """
-        Write multiple DataFrames to different sheets in a single Excel file and create CSV backups.
-        
-        Args:
-            dataframes (List[pd.DataFrame]): List of DataFrames to write
-            filename (str): Name of the Excel file
-            sheet_names (List[str], optional): Names of the sheets
-            index (bool): Whether to write row names (index)
-            
-        Returns:
-            str: Full path of the created file
-        """
-        if sheet_names and len(sheet_names) != len(dataframes):
-            raise ValueError("Number of sheet names must match number of DataFrames")
-        
-        if not sheet_names:
-            sheet_names = [f"Sheet{i+1}" for i in range(len(dataframes))]
-        
-        filepath = self._write_excel_multiple_sheets_direct(dataframes, filename, sheet_names, index)
-        
-        # Create CSV backups for each sheet
-        for df, sheet_name in zip(dataframes, sheet_names):
-            self._create_csv_backup(df, filename, sheet_name)
-        
-        # Update metadata
-        self._update_file_metadata(filename, sheet_names)
-        
-        logger.info(f"Successfully wrote {len(dataframes)} sheets to {filename}")
-        return filepath
-    
     def generate_filename(self, base_name: str, url: str = "", timestamp: bool = False) -> str:
         """
         Generate a distinct filename for the Excel file.
@@ -490,7 +428,6 @@ class DataHandler:
         Returns:
             str: Generated filename with .xlsx extension
         """
-        import re
         clean_base_name = re.sub(r'[^\w\-_.]', '_', base_name)
         
         timestamp_part = ""
@@ -528,22 +465,13 @@ class DataHandler:
             df_copy.iloc[:, 0] = df_copy.iloc[:, 0].fillna('').astype(str)
             
         if len(df_copy.columns) >= 2:
-            def format_second_column(val):
-                if pd.isna(val) or val == '':
-                    return ''
-                str_val = str(val)
-                if str_val.endswith('.0'):
-                    str_val = str_val[:-2]
-                return str_val
-            
-            df_copy.iloc[:, 1] = df_copy.iloc[:, 1].apply(format_second_column)
+            df_copy.iloc[:, 1] = df_copy.iloc[:, 1].apply(self._format_second_column_value)
         
         return df_copy
     
     def _apply_text_formatting(self, writer: pd.ExcelWriter, sheet_name: str, df: pd.DataFrame):
         """Apply text formatting to Excel columns to preserve string format."""
         try:
-            from openpyxl.styles import NamedStyle
             
             workbook = writer.book
             worksheet = writer.sheets[sheet_name]
