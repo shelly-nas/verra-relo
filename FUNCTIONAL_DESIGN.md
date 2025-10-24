@@ -169,10 +169,8 @@ python src/backup_utility.py check --file "filename.xlsx"
 ```mermaid
 flowchart TD
     A[Config URLs] --> D[Web Extract]
-    B[User Input] --> D
-    C[Web Sources] --> D
 
-    D --> E[Data Clean]
+    D --> E[Clean Data]
     E --> F[Change Compare]
 
     F --> G[CSV Backups<br/>Source of Truth]
@@ -181,12 +179,8 @@ flowchart TD
     G --> I[Excel Files<br/>User Interface]
     H --> I
 
-    I --> J[Processing Logs]
-
     subgraph Input
         A
-        B
-        C
     end
 
     subgraph Processing
@@ -202,7 +196,6 @@ flowchart TD
 
     subgraph Output
         I
-        J
     end
 ```
 
