@@ -2,9 +2,7 @@ name: VERRA IND Alerts Build, Push & Deploy
 
 on:
   push:
-    branches:
-      - main
-      - feature/pipeline
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -26,7 +24,7 @@ jobs:
     with:
       registry: ${{ vars.REGISTRY_URL }}
       deploy_directory: /volume1/docker/verra-ind-alerts
-      compose_file: docker-compose.prd.yml
+      compose_file: docker-compose.prod.yml
       image_tag: latest
     secrets:
       registry_username: ${{ vars.REGISTRY_USERNAME }}
