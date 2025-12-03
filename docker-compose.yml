@@ -1,0 +1,13 @@
+services:
+  verra-relo:
+    build: .
+    container_name: verra-relo
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount data directory to persist output files
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
