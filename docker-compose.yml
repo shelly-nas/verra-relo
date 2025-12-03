@@ -1,9 +1,9 @@
 services:
-  verra-relo:
+  verra-ind-alerts:
     build: .
-    container_name: verra-relo
+    container_name: verra-ind-alerts
     ports:
-      - "8080:8080"
+      - "9000:8080"
     volumes:
       # Mount data directory to persist output files
       - ./data:/app/data
