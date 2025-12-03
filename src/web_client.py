@@ -42,9 +42,18 @@ class PlaywrightWebClient:
     def start(self):
         """Start the browser session."""
         try:
+            logger.info("Starting Playwright...")
             self.playwright = sync_playwright().start()
-            self.browser = self.playwright.chromium.launch(headless=self.headless)
-            self.context = self.browser.new_context()
+            logger.info("Launching Firefox browser...")
+            # Use Firefox for better compatibility with emulation/Docker
+            self.browser = self.playwright.firefox.launch(
+                headless=self.headless,
+            )
+            logger.info("Creating browser context...")
+            self.context = self.browser.new_context(
+                viewport={'width': 1280, 'height': 720},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0'
+            )
             self.page = self.context.new_page()
             self.page.set_default_timeout(self.timeout)
             logger.info("Browser session started successfully")

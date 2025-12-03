@@ -1,0 +1,991 @@
+"""
+Web server with Flask API and UI for managing the data fetching process.
+"""
+import logging
+import threading
+import time
+from datetime import datetime, timedelta
+from flask import Flask, render_template_string, jsonify, request
+
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__)
+
+# Global state for the scheduler
+scheduler_state = {
+    'is_running': False,
+    'interval_hours': 672,  # Every 4 weeks by default
+    'selected_day': 1,  # Monday by default (0=Sunday, 1=Monday, etc.)
+    'last_run': None,
+    'next_run': None,
+    'scheduler_thread': None,
+    'stop_event': threading.Event()
+}
+
+# Global state for batch process
+batch_state = {
+    'is_running': False,
+    'last_result': None,  # 'success' or 'error'
+    'last_message': None,
+    'started_at': None,
+    'last_run_details': None  # Details about what was processed
+}
+
+# Global state for email notifications
+email_state = {
+    'last_sent': None,
+    'last_subject': None,
+    'last_summary': None,  # Summary of what was in the email
+    'last_recipients': 0
+}
+
+# HTML template for the web UI - Notion style
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IND Register Scheduler</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #ffffff;
+            min-height: 100vh;
+            color: #37352f;
+            line-height: 1.5;
+            padding: 3rem 1.5rem;
+        }
+        
+        .container {
+            max-width: 680px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            font-size: 2.25rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            color: #37352f;
+        }
+        
+        .subtitle {
+            color: #787774;
+            font-size: 1rem;
+            margin-bottom: 2.5rem;
+        }
+        
+        .card {
+            background: #ffffff;
+            border: 1px solid #e3e2e0;
+            border-radius: 4px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .card-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #37352f;
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #f1f1ef;
+        }
+        
+        .status-row:last-child {
+            border-bottom: none;
+        }
+        
+        .status-label {
+            color: #787774;
+            font-size: 0.9375rem;
+        }
+        
+        .status-value {
+            font-size: 0.9375rem;
+            color: #37352f;
+        }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.25rem 0.625rem;
+            border-radius: 3px;
+            font-size: 0.8125rem;
+            font-weight: 500;
+        }
+        
+        .status-badge.running {
+            background: #dff5e3;
+            color: #0f7b0f;
+        }
+        
+        .status-badge.stopped {
+            background: #f1f1ef;
+            color: #787774;
+        }
+        
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+        
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+        
+        .form-label {
+            display: block;
+            font-size: 0.875rem;
+            color: #37352f;
+            margin-bottom: 0.375rem;
+            font-weight: 500;
+        }
+        
+        .schedule-select {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            background: #ffffff;
+            border: 1px solid #e3e2e0;
+            border-radius: 4px;
+            color: #37352f;
+            font-family: inherit;
+            font-size: 0.9375rem;
+            cursor: pointer;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        
+        .schedule-select:hover {
+            border-color: #c4c4c1;
+        }
+        
+        .schedule-select:focus {
+            outline: none;
+            border-color: #2eaadc;
+            box-shadow: 0 0 0 3px rgba(46, 170, 220, 0.15);
+        }
+        
+        .day-picker {
+            display: none;
+            gap: 0.375rem;
+            flex-wrap: wrap;
+            margin-top: 0.75rem;
+        }
+        
+        .day-picker.visible {
+            display: flex;
+        }
+        
+        .day-btn {
+            padding: 0.375rem 0.75rem;
+            background: #ffffff;
+            border: 1px solid #e3e2e0;
+            border-radius: 4px;
+            color: #37352f;
+            font-family: inherit;
+            font-size: 0.8125rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        
+        .day-btn:hover {
+            background: #f7f6f5;
+            border-color: #c4c4c1;
+        }
+        
+        .day-btn.selected {
+            background: #37352f;
+            border-color: #37352f;
+            color: #ffffff;
+        }
+        
+        .schedule-summary {
+            margin-top: 1rem;
+            padding: 0.75rem 1rem;
+            background: #f7f6f5;
+            border-radius: 4px;
+            color: #787774;
+            font-size: 0.875rem;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.375rem;
+        }
+        
+        .btn-primary {
+            background: #2eaadc;
+            color: #ffffff;
+        }
+        
+        .btn-primary:hover {
+            background: #2496c4;
+        }
+        
+        .btn-primary:disabled {
+            background: #c4c4c1;
+            cursor: not-allowed;
+        }
+        
+        .btn-secondary {
+            background: #f7f6f5;
+            color: #37352f;
+            border: 1px solid #e3e2e0;
+        }
+        
+        .btn-secondary:hover {
+            background: #eeeeec;
+        }
+        
+        .btn-danger {
+            background: #eb5757;
+            color: #ffffff;
+        }
+        
+        .btn-danger:hover {
+            background: #d94848;
+        }
+        
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .message {
+            margin-top: 1rem;
+            padding: 0.75rem 1rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            display: none;
+        }
+        
+        .message.success {
+            display: block;
+            background: #dff5e3;
+            color: #0f7b0f;
+        }
+        
+        .message.error {
+            display: block;
+            background: #fde8e8;
+            color: #c53030;
+        }
+        
+        .message.info {
+            display: block;
+            background: #e8f4fd;
+            color: #2563eb;
+        }
+        
+        @media (max-width: 600px) {
+            body {
+                padding: 2rem 1rem;
+            }
+            
+            h1 {
+                font-size: 1.75rem;
+            }
+            
+            .button-group {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>IND Register Scheduler</h1>
+        <p class="subtitle">Automated data collection from the IND public register</p>
+        
+        <div class="card">
+            <div class="card-title">Status</div>
+            <div class="status-row">
+                <span class="status-label">Scheduler</span>
+                <span class="status-badge stopped" id="scheduler-status">
+                    <span class="status-dot"></span>
+                    Stopped
+                </span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Last run</span>
+                <span class="status-value" id="last-run">Never</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Last run result</span>
+                <span class="status-value" id="last-run-result">-</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Last run details</span>
+                <span class="status-value" id="last-run-details" style="font-size: 0.8rem; color: #787774;">-</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Next run</span>
+                <span class="status-value" id="next-run">-</span>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-title">Schedule</div>
+            
+            <div class="form-group">
+                <label class="form-label" for="schedule-type">Frequency</label>
+                <select class="schedule-select" id="schedule-type">
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="biweekly">Every 2 weeks</option>
+                    <option value="monthly" selected>Every 4 weeks</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Day</label>
+                <div class="day-picker visible" id="day-picker">
+                    <button type="button" class="day-btn" data-day="0">Sun</button>
+                    <button type="button" class="day-btn selected" data-day="1">Mon</button>
+                    <button type="button" class="day-btn" data-day="2">Tue</button>
+                    <button type="button" class="day-btn" data-day="3">Wed</button>
+                    <button type="button" class="day-btn" data-day="4">Thu</button>
+                    <button type="button" class="day-btn" data-day="5">Fri</button>
+                    <button type="button" class="day-btn" data-day="6">Sat</button>
+                </div>
+            </div>
+            
+            <div class="schedule-summary" id="schedule-summary">
+                Runs every 4th Monday at 00:00
+            </div>
+            
+            <div class="button-group">
+                <button class="btn btn-primary" id="run-now-btn" onclick="runNow()">Run Now</button>
+                <button class="btn btn-secondary" id="toggle-scheduler-btn" onclick="toggleScheduler()">Start Scheduler</button>
+            </div>
+            
+            <div class="message" id="message"></div>
+        </div>
+        
+        <div class="card">
+            <div class="card-title">Email Notifications</div>
+            <div class="status-row">
+                <span class="status-label">Last email sent</span>
+                <span class="status-value" id="last-email-sent">Never</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Subject</span>
+                <span class="status-value" id="last-email-subject" style="font-size: 0.8rem;">-</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Summary</span>
+                <span class="status-value" id="last-email-summary" style="font-size: 0.8rem; color: #787774;">-</span>
+            </div>
+            <div class="status-row">
+                <span class="status-label">Recipients</span>
+                <span class="status-value" id="last-email-recipients">-</span>
+            </div>
+            <p style="color: #787774; font-size: 0.875rem; margin: 1rem 0;">Send a test email to verify your SMTP configuration and mailing list.</p>
+            <button class="btn btn-secondary" id="test-email-btn" onclick="sendTestEmail()">Send Test Email</button>
+            <div class="message" id="email-message"></div>
+        </div>
+    </div>
+    
+    <script>
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        let selectedDay = 1;
+        const messageTimeouts = {};
+        
+        function showMessage(elementId, text, type) {
+            const messageEl = document.getElementById(elementId);
+            if (!messageEl) return;
+            
+            messageEl.textContent = text;
+            messageEl.className = 'message ' + type;
+            
+            // Clear any existing timeout for this element
+            if (messageTimeouts[elementId]) {
+                clearTimeout(messageTimeouts[elementId]);
+            }
+            
+            // Auto-remove after 10 seconds
+            messageTimeouts[elementId] = setTimeout(() => {
+                messageEl.className = 'message';
+                messageEl.textContent = '';
+            }, 10000);
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            updateStatus();
+            setupDayPicker();
+            updateScheduleUI();
+        });
+        
+        function setupDayPicker() {
+            const dayPicker = document.getElementById('day-picker');
+            dayPicker.querySelectorAll('.day-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    dayPicker.querySelectorAll('.day-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    selectedDay = parseInt(btn.dataset.day);
+                    updateScheduleSummary();
+                    saveSchedule();
+                });
+            });
+            
+            document.getElementById('schedule-type').addEventListener('change', () => {
+                updateScheduleUI();
+                saveSchedule();
+            });
+        }
+        
+        function selectDay(day) {
+            selectedDay = day;
+            const dayPicker = document.getElementById('day-picker');
+            dayPicker.querySelectorAll('.day-btn').forEach(btn => {
+                btn.classList.toggle('selected', parseInt(btn.dataset.day) === day);
+            });
+            updateScheduleSummary();
+            saveSchedule();
+        }
+        
+        function updateScheduleUI() {
+            const scheduleType = document.getElementById('schedule-type').value;
+            const dayPicker = document.getElementById('day-picker');
+            
+            if (scheduleType === 'daily') {
+                dayPicker.classList.remove('visible');
+            } else {
+                dayPicker.classList.add('visible');
+            }
+            
+            updateScheduleSummary();
+        }
+        
+        function updateScheduleSummary() {
+            const scheduleType = document.getElementById('schedule-type').value;
+            const summaryEl = document.getElementById('schedule-summary');
+            const dayName = dayNames[selectedDay];
+            
+            let summary = '';
+            switch (scheduleType) {
+                case 'daily':
+                    summary = 'Runs every day at 00:00';
+                    break;
+                case 'weekly':
+                    summary = `Runs every ${dayName} at 00:00`;
+                    break;
+                case 'biweekly':
+                    summary = `Runs every other ${dayName} at 00:00`;
+                    break;
+                case 'monthly':
+                    summary = `Runs every 4th ${dayName} at 00:00`;
+                    break;
+            }
+            summaryEl.textContent = summary;
+        }
+        
+        function getIntervalHours() {
+            const scheduleType = document.getElementById('schedule-type').value;
+            switch (scheduleType) {
+                case 'daily': return 24;
+                case 'weekly': return 168;
+                case 'biweekly': return 336;
+                case 'monthly': return 672;
+                default: return 168;
+            }
+        }
+        
+        function setScheduleFromHours(hours) {
+            const scheduleSelect = document.getElementById('schedule-type');
+            if (hours <= 24) {
+                scheduleSelect.value = 'daily';
+            } else if (hours <= 168) {
+                scheduleSelect.value = 'weekly';
+            } else if (hours <= 336) {
+                scheduleSelect.value = 'biweekly';
+            } else {
+                scheduleSelect.value = 'monthly';
+            }
+            updateScheduleUI();
+        }
+        
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                const statusEl = document.getElementById('scheduler-status');
+                const lastRunEl = document.getElementById('last-run');
+                const lastRunResultEl = document.getElementById('last-run-result');
+                const lastRunDetailsEl = document.getElementById('last-run-details');
+                const nextRunEl = document.getElementById('next-run');
+                const toggleBtn = document.getElementById('toggle-scheduler-btn');
+                
+                // Email status elements
+                const lastEmailSentEl = document.getElementById('last-email-sent');
+                const lastEmailSubjectEl = document.getElementById('last-email-subject');
+                const lastEmailSummaryEl = document.getElementById('last-email-summary');
+                const lastEmailRecipientsEl = document.getElementById('last-email-recipients');
+                
+                if (data.is_running) {
+                    statusEl.innerHTML = '<span class="status-dot"></span>Running';
+                    statusEl.className = 'status-badge running';
+                    toggleBtn.textContent = 'Stop Scheduler';
+                    toggleBtn.className = 'btn btn-danger';
+                } else {
+                    statusEl.innerHTML = '<span class="status-dot"></span>Stopped';
+                    statusEl.className = 'status-badge stopped';
+                    toggleBtn.textContent = 'Start Scheduler';
+                    toggleBtn.className = 'btn btn-secondary';
+                }
+                
+                lastRunEl.textContent = data.last_run || 'Never';
+                nextRunEl.textContent = data.next_run || '-';
+                
+                // Last run result
+                if (data.batch_result === 'success') {
+                    lastRunResultEl.textContent = '✓ Success';
+                    lastRunResultEl.style.color = '#0f7b0f';
+                } else if (data.batch_result === 'error') {
+                    lastRunResultEl.textContent = '✗ Error';
+                    lastRunResultEl.style.color = '#c53030';
+                } else {
+                    lastRunResultEl.textContent = '-';
+                    lastRunResultEl.style.color = '#37352f';
+                }
+                
+                // Last run details
+                lastRunDetailsEl.textContent = data.last_run_details || '-';
+                
+                // Email status
+                lastEmailSentEl.textContent = data.email_last_sent || 'Never';
+                lastEmailSubjectEl.textContent = data.email_last_subject || '-';
+                lastEmailSummaryEl.textContent = data.email_last_summary || '-';
+                lastEmailRecipientsEl.textContent = data.email_last_recipients ? `${data.email_last_recipients} recipient(s)` : '-';
+                
+                // Set schedule from server state
+                if (data.interval_hours) {
+                    setScheduleFromHours(data.interval_hours);
+                }
+                if (data.selected_day !== undefined) {
+                    selectedDay = data.selected_day;
+                    const dayPicker = document.getElementById('day-picker');
+                    dayPicker.querySelectorAll('.day-btn').forEach(btn => {
+                        btn.classList.toggle('selected', parseInt(btn.dataset.day) === selectedDay);
+                    });
+                }
+                updateScheduleSummary();
+            } catch (error) {
+                console.error('Failed to fetch status:', error);
+            }
+        }
+        
+        async function runNow() {
+            const btn = document.getElementById('run-now-btn');
+            const messageEl = document.getElementById('message');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Running...';
+            showMessage('message', 'Batch process started...', 'info');
+            
+            try {
+                // Start the batch process
+                await fetch('/api/run', { method: 'POST' });
+                
+                // Poll for completion
+                await pollBatchStatus(btn, messageEl);
+            } catch (error) {
+                showMessage('message', 'Failed to start batch process', 'error');
+                btn.disabled = false;
+                btn.innerHTML = 'Run Now';
+            }
+        }
+        
+        async function pollBatchStatus(btn, messageEl) {
+            const pollInterval = 2000; // 2 seconds
+            const maxPolls = 300; // 10 minutes max
+            let polls = 0;
+            
+            const poll = async () => {
+                try {
+                    const response = await fetch('/api/status');
+                    const data = await response.json();
+                    
+                    if (data.batch_running) {
+                        // Still running, continue polling
+                        polls++;
+                        if (polls < maxPolls) {
+                            setTimeout(poll, pollInterval);
+                        } else {
+                            showMessage('message', 'Batch process is taking longer than expected. Check logs for status.', 'info');
+                            btn.disabled = false;
+                            btn.innerHTML = 'Run Now';
+                        }
+                    } else {
+                        // Batch finished
+                        if (data.batch_result === 'success') {
+                            showMessage('message', data.batch_message || 'Batch process completed successfully', 'success');
+                        } else if (data.batch_result === 'error') {
+                            showMessage('message', data.batch_message || 'Batch process failed', 'error');
+                        }
+                        btn.disabled = false;
+                        btn.innerHTML = 'Run Now';
+                        updateStatus();
+                    }
+                } catch (error) {
+                    console.error('Failed to poll status:', error);
+                    btn.disabled = false;
+                    btn.innerHTML = 'Run Now';
+                }
+            };
+            
+            // Start polling after a short delay
+            setTimeout(poll, pollInterval);
+        }
+        
+        async function toggleScheduler() {
+            const interval = getIntervalHours();
+            
+            try {
+                const response = await fetch('/api/scheduler/toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ interval_hours: interval, selected_day: selectedDay })
+                });
+                const data = await response.json();
+                
+                showMessage('message', data.message, data.success ? 'success' : 'error');
+                updateStatus();
+            } catch (error) {
+                showMessage('message', 'Failed to toggle scheduler', 'error');
+            }
+        }
+        
+        async function saveSchedule() {
+            const interval = getIntervalHours();
+            try {
+                await fetch('/api/scheduler/interval', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ interval_hours: interval, selected_day: selectedDay })
+                });
+            } catch (error) {
+                console.error('Failed to save schedule:', error);
+            }
+        }
+        
+        async function sendTestEmail() {
+            const btn = document.getElementById('test-email-btn');
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Sending...';
+            
+            try {
+                const response = await fetch('/api/email/test', { method: 'POST' });
+                const data = await response.json();
+                
+                showMessage('email-message', data.message, data.success ? 'success' : 'error');
+            } catch (error) {
+                showMessage('email-message', 'Failed to send test email', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Send Test Email';
+            }
+        }
+    </script>
+</body>
+</html>
+"""
+
+
+def run_batch_process():
+    """Run the main batch process."""
+    from main import main as batch_main, get_last_run_info
+    
+    batch_state['is_running'] = True
+    batch_state['started_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    batch_state['last_result'] = None
+    batch_state['last_message'] = None
+    batch_state['last_run_details'] = None
+    
+    try:
+        logger.info("Starting batch process...")
+        batch_main()
+        scheduler_state['last_run'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        batch_state['last_result'] = 'success'
+        batch_state['last_message'] = 'Batch process completed successfully'
+        
+        # Get details from main module
+        run_info = get_last_run_info()
+        batch_state['last_run_details'] = run_info.get('details')
+        
+        # Update email state if email was sent
+        if run_info.get('email_sent'):
+            email_state['last_sent'] = run_info.get('email_sent_at')
+            email_state['last_subject'] = run_info.get('email_subject')
+            email_state['last_summary'] = run_info.get('email_summary')
+            email_state['last_recipients'] = run_info.get('email_recipients', 0)
+        
+        logger.info("Batch process completed successfully")
+        return True, "Batch process completed successfully"
+    except Exception as e:
+        logger.error(f"Batch process failed: {e}")
+        batch_state['last_result'] = 'error'
+        batch_state['last_message'] = f'Batch process failed: {str(e)}'
+        return False, f"Batch process failed: {str(e)}"
+    finally:
+        batch_state['is_running'] = False
+
+
+def calculate_next_run_at_midnight(interval_hours: int, selected_day: int) -> datetime:
+    """
+    Calculate the next run time at 00:00 based on interval and selected day.
+    
+    Args:
+        interval_hours: Interval in hours (24=daily, 168=weekly, 336=bi-weekly, 672=monthly)
+        selected_day: Day of week (0=Sunday, 1=Monday, etc.)
+    
+    Returns:
+        datetime: Next scheduled run at 00:00
+    """
+    now = datetime.now()
+    
+    if interval_hours <= 24:
+        # Daily: run at next midnight
+        next_run = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        if next_run <= now:
+            next_run = next_run + timedelta(days=1)
+    else:
+        # Weekly or longer: run at midnight on the selected day
+        # Convert selected_day (0=Sunday) to Python weekday (0=Monday)
+        # Python: 0=Monday, 6=Sunday | Our format: 0=Sunday, 6=Saturday
+        python_weekday = (selected_day - 1) % 7 if selected_day > 0 else 6
+        
+        # Find the next occurrence of the selected day
+        days_ahead = python_weekday - now.weekday()
+        if days_ahead < 0:  # Target day already happened this week
+            days_ahead += 7
+        elif days_ahead == 0 and now.hour >= 0 and now.minute > 0:  # Target day is today but past midnight
+            days_ahead += 7
+            
+        next_run = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=days_ahead)
+        
+        # For bi-weekly (336h) or monthly (672h), add extra weeks if needed
+        if interval_hours > 168:
+            weeks_to_add = (interval_hours // 168) - 1
+            next_run += timedelta(weeks=weeks_to_add)
+    
+    return next_run
+
+
+def scheduler_loop():
+    """Background scheduler loop."""
+    while not scheduler_state['stop_event'].is_set():
+        # Calculate next run time at midnight on the appropriate day
+        next_run = calculate_next_run_at_midnight(
+            scheduler_state['interval_hours'],
+            scheduler_state['selected_day']
+        )
+        scheduler_state['next_run'] = next_run.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Calculate seconds until next run
+        seconds_until_run = (next_run - datetime.now()).total_seconds()
+        if seconds_until_run < 0:
+            seconds_until_run = 0
+        
+        # Wait for the interval or until stopped
+        if scheduler_state['stop_event'].wait(timeout=seconds_until_run):
+            break  # Stop event was set
+        
+        # Run the batch process
+        if not scheduler_state['stop_event'].is_set():
+            run_batch_process()
+
+
+@app.route('/')
+def index():
+    """Serve the main UI page."""
+    return render_template_string(HTML_TEMPLATE)
+
+
+@app.route('/api/status')
+def get_status():
+    """Get the current scheduler status."""
+    return jsonify({
+        'is_running': scheduler_state['is_running'],
+        'interval_hours': scheduler_state['interval_hours'],
+        'selected_day': scheduler_state['selected_day'],
+        'last_run': scheduler_state['last_run'],
+        'next_run': scheduler_state['next_run'] if scheduler_state['is_running'] else None,
+        'batch_running': batch_state['is_running'],
+        'batch_result': batch_state['last_result'],
+        'batch_message': batch_state['last_message'],
+        'last_run_details': batch_state['last_run_details'],
+        'email_last_sent': email_state['last_sent'],
+        'email_last_subject': email_state['last_subject'],
+        'email_last_summary': email_state['last_summary'],
+        'email_last_recipients': email_state['last_recipients']
+    })
+
+
+@app.route('/api/run', methods=['POST'])
+def run_now():
+    """Trigger an immediate batch run."""
+    # Run in a separate thread to not block the response
+    def run_async():
+        run_batch_process()
+    
+    thread = threading.Thread(target=run_async)
+    thread.start()
+    
+    return jsonify({
+        'success': True,
+        'message': 'Batch process started. Check logs for progress.'
+    })
+
+
+@app.route('/api/scheduler/toggle', methods=['POST'])
+def toggle_scheduler():
+    """Start or stop the scheduler."""
+    data = request.get_json() or {}
+    interval = data.get('interval_hours', scheduler_state['interval_hours'])
+    selected_day = data.get('selected_day', scheduler_state['selected_day'])
+    
+    if scheduler_state['is_running']:
+        # Stop the scheduler
+        scheduler_state['stop_event'].set()
+        if scheduler_state['scheduler_thread']:
+            scheduler_state['scheduler_thread'].join(timeout=5)
+        scheduler_state['is_running'] = False
+        scheduler_state['next_run'] = None
+        scheduler_state['stop_event'].clear()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Scheduler stopped'
+        })
+    else:
+        # Start the scheduler
+        scheduler_state['interval_hours'] = interval
+        scheduler_state['selected_day'] = selected_day
+        scheduler_state['is_running'] = True
+        scheduler_state['stop_event'].clear()
+        
+        thread = threading.Thread(target=scheduler_loop, daemon=True)
+        scheduler_state['scheduler_thread'] = thread
+        thread.start()
+        
+        # Format interval for message
+        day_names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        if interval <= 24:
+            schedule_desc = 'daily at 00:00'
+        elif interval <= 168:
+            schedule_desc = f'every {day_names[selected_day]} at 00:00'
+        elif interval <= 336:
+            schedule_desc = f'every other {day_names[selected_day]} at 00:00'
+        else:
+            schedule_desc = f'every 4th {day_names[selected_day]} at 00:00'
+        
+        return jsonify({
+            'success': True,
+            'message': f'Scheduler started: runs {schedule_desc}'
+        })
+
+
+@app.route('/api/scheduler/interval', methods=['POST'])
+def set_interval():
+    """Update the scheduler interval and selected day."""
+    data = request.get_json() or {}
+    interval = data.get('interval_hours', 672)
+    selected_day = data.get('selected_day', scheduler_state['selected_day'])
+    
+    scheduler_state['interval_hours'] = interval
+    scheduler_state['selected_day'] = selected_day
+    
+    return jsonify({
+        'success': True,
+        'message': 'Schedule updated'
+    })
+
+
+@app.route('/api/email/test', methods=['POST'])
+def send_test_email():
+    """Send a test email to verify SMTP configuration."""
+    from email_notifier import EmailNotifier
+    
+    notifier = EmailNotifier()
+    
+    if not notifier.enabled:
+        return jsonify({
+            'success': False,
+            'message': 'Email notifications not configured. Set SMTP_USERNAME, SMTP_PASSWORD, and MAILING_LIST in .env file.'
+        })
+    
+    # Use the notifier's built-in test email method which includes CSV attachment
+    success = notifier.send_test_email()
+    
+    if success:
+        return jsonify({
+            'success': True,
+            'message': f'Test email sent successfully to {len(notifier.mailing_list)} recipient(s)'
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'message': 'Failed to send test email. Check server logs for details.'
+        })
+
+
+def start_server(host='0.0.0.0', port=8080, debug=False):
+    """Start the Flask web server."""
+    logger.info(f"Starting web server on {host}:{port}")
+    app.run(host=host, port=port, debug=debug, threaded=True)
+
+
+if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s: %(message)s'
+    )
+    start_server(debug=True)

@@ -499,7 +499,7 @@ class DataHandler:
                                dataframe: pd.DataFrame, 
                                filename: str, 
                                sheet_name: str = "data",
-                               index: bool = False) -> Tuple[str, int, int]:
+                               index: bool = False) -> Tuple[str, int, int, Optional[pd.DataFrame]]:
         """
         Write a DataFrame to an Excel file incrementally with CSV backup as source of truth.
         Implements the three flows:
@@ -514,7 +514,7 @@ class DataHandler:
             index (bool): Whether to write row names (index)
             
         Returns:
-            Tuple[str, int, int]: Full path of the file, total rows, new rows added
+            Tuple[str, int, int, Optional[pd.DataFrame]]: Full path of the file, total rows, new rows added, and the new rows DataFrame (or None)
         """
         filepath = os.path.join(self.data_directory, filename)
         
@@ -557,6 +557,9 @@ class DataHandler:
                 # Check if there are changes between new data and CSV backup
                 changes_detected = self._detect_data_changes(new_data, csv_backup, unique_col)
                 
+                # Track new rows DataFrame for attachment
+                new_rows_df = None
+                
                 if changes_detected:
                     # Flow 1: Changes detected - update CSV backup and Excel
                     logger.info("Flow 1: Processing new data changes")
@@ -565,6 +568,7 @@ class DataHandler:
                     if len(new_rows) > 0:
                         updated_csv_data = pd.concat([csv_backup, new_rows], ignore_index=True)
                         new_rows_count = len(new_rows)
+                        new_rows_df = new_rows.copy()  # Store new rows for email attachment
                         logger.info(f"Added {new_rows_count} new rows to CSV backup")
                     else:
                         # Handle updates to existing rows
@@ -604,10 +608,11 @@ class DataHandler:
                 updated_df = final_data
                 
             else:
-                # No CSV backup exists - create new file
+                # No CSV backup exists - create new file (all rows are new)
                 logger.info("No CSV backup found, creating new file")
                 updated_df = new_data
                 new_rows_count = len(new_data)
+                new_rows_df = new_data.copy()  # All rows are new
                 
                 # Create CSV backup (source of truth)
                 self._create_csv_backup(updated_df, filename, sheet_name)
@@ -622,7 +627,7 @@ class DataHandler:
             logger.info(f"Successfully updated {filename}")
             logger.info(f"Total rows: {total_rows}, New rows added: {new_rows_count}")
             
-            return filepath, total_rows, new_rows_count
+            return filepath, total_rows, new_rows_count, new_rows_df
         
         except Exception as e:
             logger.error(f"Failed to write Excel file incrementally {filename}: {e}")
@@ -632,7 +637,7 @@ class DataHandler:
                                         dataframes: List[pd.DataFrame], 
                                         filename: str,
                                         sheet_names: Optional[List[str]] = None,
-                                        index: bool = False) -> Tuple[str, List[Tuple[int, int]]]:
+                                        index: bool = False) -> Tuple[str, List[Tuple[int, int, Optional[pd.DataFrame]]]]:
         """
         Write multiple DataFrames to different sheets incrementally with CSV backup.
         Implements the same three flows as write_excel_incremental for each sheet.
@@ -644,7 +649,7 @@ class DataHandler:
             index (bool): Whether to write row names (index)
             
         Returns:
-            Tuple[str, List[Tuple[int, int]]]: Full path and list of (total_rows, new_rows) for each sheet
+            Tuple[str, List[Tuple[int, int, Optional[pd.DataFrame]]]]: Full path and list of (total_rows, new_rows, new_rows_df) for each sheet
         """
         if sheet_names and len(sheet_names) != len(dataframes):
             raise ValueError("Number of sheet names must match number of DataFrames")
@@ -689,12 +694,16 @@ class DataHandler:
                     # Check for changes
                     changes_detected = self._detect_data_changes(new_data, csv_backup, unique_col)
                     
+                    # Track new rows DataFrame
+                    new_rows_df = None
+                    
                     if changes_detected:
                         # Flow 1: Process changes
                         new_rows = self._find_new_rows(new_data, csv_backup, unique_col)
                         if len(new_rows) > 0:
                             updated_csv_data = pd.concat([csv_backup, new_rows], ignore_index=True)
                             new_count = len(new_rows)
+                            new_rows_df = new_rows.copy()  # Store new rows for email attachment
                         else:
                             updated_csv_data = new_data.copy()
                             updated_csv_data['created_date'] = datetime.now().strftime('%Y-%m-%d')
@@ -716,13 +725,14 @@ class DataHandler:
                             updated_df = csv_backup
                         new_count = 0
                 else:
-                    # No CSV backup - create new
+                    # No CSV backup - create new (all rows are new)
                     updated_df = new_data
                     new_count = len(new_data)
+                    new_rows_df = new_data.copy()  # All rows are new
                     self._create_csv_backup(updated_df, filename, sheet_name)
                 
                 all_updated_dfs.append(updated_df)
-                results.append((len(updated_df), new_count))
+                results.append((len(updated_df), new_count, new_rows_df))
             
             # Write all sheets to Excel
             self._write_excel_multiple_sheets_direct(all_updated_dfs, filename, sheet_names, index)
