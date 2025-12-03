@@ -2,7 +2,7 @@ name: VERRA IND Alerts Build, Push & Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/pipeline]
   workflow_dispatch:
 
 jobs:
