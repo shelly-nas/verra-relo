@@ -1,7 +1,6 @@
 services:
   verra-ind-alerts:
-    build:
-      dockerfile: Dockerfile
+    image: ${REGISTRY}/verra-ind-alerts:${IMAGE_TAG:-latest}
     container_name: verra-ind-alerts
     ports:
       - "9000:8080"

@@ -1,0 +1,36 @@
+name: VERRA IND Alerts Build, Push & Deploy
+
+on:
+  push:
+    branches: [main, feature/pipeline]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and Push VERRA IND Alerts
+    uses: shelly-nas/shared-workflows/.github/workflows/build-push.yml@main
+    with:
+      registry: ${{ vars.REGISTRY_URL }}
+      image_tag: ${{ vars.REGISTRY_URL }}/verra-ind-alerts:latest
+      context: .
+    secrets:
+      registry_password: ${{ secrets.REGISTRY_PASSWORD }}
+
+  deploy:
+    name: Deploy from Registry
+    needs: [build]
+    if: ${{ success() }}
+    uses: shelly-nas/shared-workflows/.github/workflows/deploy.yml@main
+    with:
+      registry: ${{ vars.REGISTRY_URL }}
+      deploy_directory: /volume1/docker/verra-ind-alerts
+      compose_file: docker-compose.prod.yml
+      image_tag: latest
+    secrets:
+      registry_username: ${{ vars.REGISTRY_USERNAME }}
+      registry_password: ${{ secrets.REGISTRY_PASSWORD }}
+      env_file_content: |
+        SENDER_NAME=${{ vars.SENDER_NAME }}
+        SMTP_USERNAME=${{ vars.SMTP_USERNAME }}
+        SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+        MAILING_LIST=${{ vars.MAILING_LIST }}
