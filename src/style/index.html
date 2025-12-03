@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="nl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Verra Makelaars - The Leading Expat Brokerage in the Netherlands">
+    <title>Verra Makelaars - The Leading Expat Brokerage</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts alternative -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=Roboto:wght@300;400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        /* Override fonts with Google Fonts */
+        :root {
+            --font-primary: 'Roboto', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            --font-heading: 'Playfair Display', Georgia, 'Times New Roman', serif;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Cookie Banner -->
+    <div class="cookie-banner" id="cookieBanner">
+        <div class="cookie-banner__content">
+            <div class="cookie-banner__text">
+                <h4>Deze website maakt gebruik van cookies</h4>
+                <p>We gebruiken cookies om content en advertenties te personaliseren, om functies voor social media te
+                    bieden en om ons websiteverkeer te analyseren.</p>
+            </div>
+            <div class="cookie-banner__buttons">
+                <button class="btn btn--outline" onclick="closeCookieBanner()">Weigeren</button>
+                <button class="btn btn--primary" onclick="closeCookieBanner()">Alles toestaan</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Header / Navigation -->
+    <header class="header" id="header">
+        <div class="header__container">
+            <a href="#" class="header__logo">
+                <!-- Logo placeholder - replace with actual logo -->
+                <svg viewBox="0 0 120 40" fill="white" height="40">
+                    <text x="10" y="28" font-size="24" font-family="Georgia" font-weight="bold">VERRA</text>
+                </svg>
+            </a>
+
+            <nav class="nav">
+                <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">
+                    <span class="menu-toggle__bar"></span>
+                    <span class="menu-toggle__bar"></span>
+                    <span class="menu-toggle__bar"></span>
+                </button>
+
+                <ul class="nav__list" id="navList">
+                    <li><a href="#" class="nav__link">Aanbod</a></li>
+                    <li><a href="#diensten" class="nav__link">Diensten</a></li>
+                    <li><a href="#" class="nav__link">Nieuws</a></li>
+                    <li><a href="#" class="nav__link">Local Life</a></li>
+                    <li><a href="#over-ons" class="nav__link">Over Ons</a></li>
+                    <li><a href="#contact" class="nav__link">Contact</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <img src="https://images.unsplash.com/photo-1560518883-ce09059eeffa?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80"
+            alt="Luxury apartment" class="hero__background">
+        <div class="hero__overlay"></div>
+
+        <div class="hero__content">
+            <h1 class="hero__title">
+                The Leading<br>
+                <span>Expat Brokerage</span>
+            </h1>
+            <p class="hero__subtitle">Den Haag • Rotterdam • Hillegersberg</p>
+
+            <div class="hero__buttons">
+                <a href="#" class="btn btn--primary">Aanbod</a>
+                <a href="#diensten" class="btn btn--outline">Diensten</a>
+            </div>
+        </div>
+
+        <div class="hero__scroll">
+            Scroll voor meer ↓
+        </div>
+    </section>
+
+    <!-- Properties Section -->
+    <section class="section section--light">
+        <div class="section__container">
+            <div class="section__header">
+                <h2 class="section__title">Uitgelicht Aanbod</h2>
+                <p class="section__subtitle">Ontdek ons exclusieve woningaanbod in de Randstad</p>
+            </div>
+
+            <div class="properties-grid">
+                <!-- Property Card 1 -->
+                <article class="property-card">
+                    <div class="property-card__image">
+                        <img src="https://images.unsplash.com/photo-1512917774080-9991f1c4c750?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                            alt="Modern apartment">
+                        <span class="property-card__badge">Te Huur</span>
+                    </div>
+                    <div class="property-card__content">
+                        <h3 class="property-card__title">Moderne Penthouse</h3>
+                        <p class="property-card__location">Den Haag Centrum</p>
+                        <p class="property-card__price">€ 2.500 p/m</p>
+                        <div class="property-card__details">
+                            <span>🛏 3 slaapkamers</span>
+                            <span>📐 120 m²</span>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Property Card 2 -->
+                <article class="property-card">
+                    <div class="property-card__image">
+                        <img src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                            alt="Family home">
+                        <span class="property-card__badge">Te Koop</span>
+                    </div>
+                    <div class="property-card__content">
+                        <h3 class="property-card__title">Karakteristieke Woning</h3>
+                        <p class="property-card__location">Hillegersberg</p>
+                        <p class="property-card__price">€ 875.000</p>
+                        <div class="property-card__details">
+                            <span>🛏 4 slaapkamers</span>
+                            <span>📐 180 m²</span>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Property Card 3 -->
+                <article class="property-card">
+                    <div class="property-card__image">
+                        <img src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                            alt="Luxury villa">
+                        <span class="property-card__badge">Te Huur</span>
+                    </div>
+                    <div class="property-card__content">
+                        <h3 class="property-card__title">Luxe Appartement</h3>
+                        <p class="property-card__location">Rotterdam Zuid</p>
+                        <p class="property-card__price">€ 1.950 p/m</p>
+                        <div class="property-card__details">
+                            <span>🛏 2 slaapkamers</span>
+                            <span>📐 95 m²</span>
+                        </div>
+                    </div>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <!-- Services Section -->
+    <section class="section section--dark" id="diensten">
+        <div class="section__container">
+            <div class="section__header">
+                <h2 class="section__title">Onze Diensten</h2>
+                <p class="section__subtitle" style="color: rgba(255,255,255,0.7);">Professionele ondersteuning voor al
+                    uw vastgoedbehoeften</p>
+            </div>
+
+            <div class="services-grid">
+                <div class="service-card">
+                    <div class="service-card__icon">🏠</div>
+                    <h3 class="service-card__title">Aanhuur</h3>
+                    <p class="service-card__description">Professionele begeleiding bij het vinden van uw ideale
+                        huurwoning in Nederland.</p>
+                </div>
+
+                <div class="service-card">
+                    <div class="service-card__icon">🔑</div>
+                    <h3 class="service-card__title">Aankoop</h3>
+                    <p class="service-card__description">Expert advies en ondersteuning bij de aankoop van uw droomhuis.
+                    </p>
+                </div>
+
+                <div class="service-card">
+                    <div class="service-card__icon">📋</div>
+                    <h3 class="service-card__title">Beheer</h3>
+                    <p class="service-card__description">Volledig ontzorgd met ons professionele vastgoedbeheer.</p>
+                </div>
+
+                <div class="service-card">
+                    <div class="service-card__icon">📈</div>
+                    <h3 class="service-card__title">Verhuur</h3>
+                    <p class="service-card__description">Maximale opbrengst met minimale inspanning voor verhuurders.
+                    </p>
+                </div>
+
+                <div class="service-card">
+                    <div class="service-card__icon">💰</div>
+                    <h3 class="service-card__title">Verkoop</h3>
+                    <p class="service-card__description">Optimale verkoopresultaten met onze bewezen verkoopstrategie.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Reviews Section -->
+    <section class="section section--light" id="over-ons">
+        <div class="section__container">
+            <div class="section__header">
+                <h2 class="section__title">Wat Onze Klanten Zeggen</h2>
+            </div>
+
+            <div class="reviews-carousel">
+                <div class="review-card">
+                    <p class="review-card__quote">
+                        "Verra Makelaars heeft ons fantastisch geholpen bij het vinden van ons eerste huis in Nederland.
+                        De service was professioneel en persoonlijk. Highly recommended!"
+                    </p>
+                    <p class="review-card__author">— Sarah & Michael, Expats uit UK</p>
+                    <div class="review-card__rating">★★★★★</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer" id="contact">
+        <div class="footer__container">
+            <div class="footer__grid">
+                <div class="footer__column">
+                    <h4>Aanbod</h4>
+                    <div class="footer__links">
+                        <a href="#" class="footer__link">Te koop</a>
+                        <a href="#" class="footer__link">Te huur</a>
+                        <a href="#" class="footer__link">Shortstay</a>
+                        <a href="#" class="footer__link">Verkocht</a>
+                        <a href="#" class="footer__link">Verhuurd</a>
+                    </div>
+                </div>
+
+                <div class="footer__column">
+                    <h4>Diensten</h4>
+                    <div class="footer__links">
+                        <a href="#" class="footer__link">Aanhuur</a>
+                        <a href="#" class="footer__link">Aankoop</a>
+                        <a href="#" class="footer__link">Beheer</a>
+                        <a href="#" class="footer__link">Verhuur</a>
+                        <a href="#" class="footer__link">Verkoop</a>
+                    </div>
+                </div>
+
+                <div class="footer__column">
+                    <h4>Over Ons</h4>
+                    <div class="footer__links">
+                        <a href="#" class="footer__link">FAQ</a>
+                        <a href="#" class="footer__link">Reviews</a>
+                        <a href="#" class="footer__link">Nieuws</a>
+                        <a href="#" class="footer__link">Local Life</a>
+                        <a href="#" class="footer__link">Werken bij</a>
+                    </div>
+                </div>
+
+                <div class="footer__column">
+                    <h4>Vestigingen</h4>
+                    <div class="footer__links">
+                        <a href="#" class="footer__link">Den Haag</a>
+                        <a href="#" class="footer__link">Hillegersberg</a>
+                        <a href="#" class="footer__link">Rotterdam</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="footer__bottom">
+                <p>© 2025 Verra Makelaars</p>
+                <div class="footer__links" style="flex-direction: row; gap: 1rem;">
+                    <a href="#" class="footer__link">Privacybeleid</a>
+                    <a href="#" class="footer__link">Cookies</a>
+                    <a href="#" class="footer__link">Algemene voorwaarden</a>
+                </div>
+                <div class="footer__social">
+                    <a href="#" aria-label="LinkedIn">in</a>
+                    <a href="#" aria-label="Facebook">f</a>
+                    <a href="#" aria-label="Instagram">📷</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+        // Mobile menu toggle
+        const menuToggle = document.getElementById('menuToggle');
+        const navList = document.getElementById('navList');
+
+        menuToggle.addEventListener('click', () => {
+            navList.classList.toggle('active');
+        });
+
+        // Header scroll effect
+        const header = document.getElementById('header');
+
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 50) {
+                header.classList.add('scrolled');
+            } else {
+                header.classList.remove('scrolled');
+            }
+        });
+
+        // Cookie banner
+        function closeCookieBanner() {
+            document.getElementById('cookieBanner').style.display = 'none';
+        }
+
+        // Check if cookies already accepted
+        if (localStorage.getItem('cookiesAccepted')) {
+            closeCookieBanner();
+        }
+    </script>
+</body>
+
+</html>
