@@ -1,0 +1,21 @@
+{
+  "fetch_urls": [
+    {
+      "name": "arbeid_regulier_kennismigranten",
+      "url": "https://ind.nl/nl/openbaar-register-erkende-referenten/openbaar-register-arbeid-regulier-kennismigranten"
+    },
+    {
+      "name": "wetenschappelijk_onderzoeker",
+      "url": "https://ind.nl/nl/openbaar-register-erkende-referenten/openbaar-register-wetenschappelijk-onderzoeker-richtlijn-eu-2016801"
+    }
+  ],
+  "mailing_list": ["jellevandergraaf@live.com", "ashley@verra.nl"],
+  "sender_name": "IND Register Alerts",
+  "scheduler_state": {
+    "is_running": true,
+    "interval_hours": 168,
+    "selected_day": 1,
+    "last_run": null,
+    "next_run": null
+  }
+}

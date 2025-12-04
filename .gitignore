@@ -2,6 +2,9 @@
 .venv
 .env
 
+# Production config (mounted separately, not overwritten by repo)
+config.json
+
 # Data files
 data/
 *.xlsx

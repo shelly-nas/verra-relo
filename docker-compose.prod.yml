@@ -6,12 +6,10 @@ services:
       - "9000:8080"
     volumes:
       # Mount data directory to persist output files
-      - ind-data:/app/data
+      - ./data:/app/data
+      # Mount config file to persist configuration changes across deployments
+      - ./config.json:/app/src/config.json
     env_file:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
-
-volumes:
-  ind-data:
-    driver: local

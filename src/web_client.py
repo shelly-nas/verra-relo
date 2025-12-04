@@ -2,7 +2,7 @@
 Web client using Playwright for scraping data from web pages.
 """
 import pandas as pd
-from playwright.sync_api import sync_playwright, Page, Browser, BrowserContext
+from playwright.sync_api import sync_playwright
 from typing import List, Optional
 import logging
 from io import StringIO

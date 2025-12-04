@@ -4,9 +4,27 @@ Utility functions for reading configuration and handling common tasks.
 import json
 import os
 from typing import List, Dict
+from urllib.parse import urlparse
 
 
-def read_config(config_path: str = "config.json") -> dict:
+def get_config_path(config_path: str = "src/config.json") -> str:
+    """
+    Get the absolute path to the configuration file.
+    
+    Args:
+        config_path (str): Path to the configuration file
+        
+    Returns:
+        str: Absolute path to the configuration file
+    """
+    if not os.path.isabs(config_path):
+        # If relative path, make it relative to project root
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        config_path = os.path.join(project_root, config_path)
+    return config_path
+
+
+def read_config(config_path: str = "src/config.json") -> dict:
     """
     Read configuration from JSON file.
     
@@ -20,10 +38,7 @@ def read_config(config_path: str = "config.json") -> dict:
         FileNotFoundError: If config file doesn't exist
         json.JSONDecodeError: If config file contains invalid JSON
     """
-    if not os.path.isabs(config_path):
-        # If relative path, make it relative to project root
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        config_path = os.path.join(project_root, config_path)
+    config_path = get_config_path(config_path)
     
     try:
         with open(config_path, 'r', encoding='utf-8') as file:
@@ -35,7 +50,134 @@ def read_config(config_path: str = "config.json") -> dict:
         raise json.JSONDecodeError(f"Invalid JSON in configuration file: {e}")
 
 
-def get_url_objects(config_path: str = "config.json") -> List[Dict[str, str]]:
+def write_config(config: dict, config_path: str = "src/config.json") -> None:
+    """
+    Write configuration to JSON file.
+    
+    Args:
+        config (dict): Configuration data to write
+        config_path (str): Path to the configuration file
+    """
+    config_path = get_config_path(config_path)
+    
+    with open(config_path, 'w', encoding='utf-8') as file:
+        json.dump(config, file, indent=2, ensure_ascii=False)
+
+
+def get_scheduler_state() -> dict:
+    """
+    Get scheduler state from configuration file.
+    
+    Returns:
+        dict: Scheduler state with keys: is_running, interval_hours, selected_day, last_run, next_run
+    """
+    try:
+        config = read_config()
+        return config.get('scheduler_state', {
+            'is_running': False,
+            'interval_hours': 672,
+            'selected_day': 1,
+            'last_run': None,
+            'next_run': None
+        })
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {
+            'is_running': False,
+            'interval_hours': 672,
+            'selected_day': 1,
+            'last_run': None,
+            'next_run': None
+        }
+
+
+def save_scheduler_state(state: dict) -> None:
+    """
+    Save scheduler state to configuration file.
+    
+    Args:
+        state (dict): Scheduler state to save
+    """
+    try:
+        config = read_config()
+    except (FileNotFoundError, json.JSONDecodeError):
+        config = {'fetch_urls': [], 'mailing_list': []}
+    
+    # Only save persistent state (not thread objects)
+    config['scheduler_state'] = {
+        'is_running': state.get('is_running', False),
+        'interval_hours': state.get('interval_hours', 672),
+        'selected_day': state.get('selected_day', 1),
+        'last_run': state.get('last_run'),
+        'next_run': state.get('next_run')
+    }
+    write_config(config)
+
+
+def get_mailing_list() -> List[str]:
+    """
+    Get mailing list from configuration file.
+    
+    Returns:
+        List[str]: List of email addresses
+    """
+    try:
+        config = read_config()
+        mailing_list = config.get('mailing_list', [])
+        if isinstance(mailing_list, list):
+            return mailing_list
+        return []
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def save_mailing_list(emails: List[str]) -> None:
+    """
+    Save mailing list to configuration file.
+    
+    Args:
+        emails (List[str]): List of email addresses to save
+    """
+    try:
+        config = read_config()
+    except (FileNotFoundError, json.JSONDecodeError):
+        config = {'fetch_urls': [], 'mailing_list': []}
+    
+    # Clean and validate emails
+    clean_emails = [email.strip() for email in emails if email.strip()]
+    config['mailing_list'] = clean_emails
+    write_config(config)
+
+
+def get_sender_name() -> str:
+    """
+    Get sender name from configuration file.
+    
+    Returns:
+        str: Sender display name for emails
+    """
+    try:
+        config = read_config()
+        return config.get('sender_name', 'IND Register Alerts')
+    except (FileNotFoundError, json.JSONDecodeError):
+        return 'IND Register Alerts'
+
+
+def save_sender_name(name: str) -> None:
+    """
+    Save sender name to configuration file.
+    
+    Args:
+        name (str): Sender display name to save
+    """
+    try:
+        config = read_config()
+    except (FileNotFoundError, json.JSONDecodeError):
+        config = {'fetch_urls': [], 'mailing_list': []}
+    
+    config['sender_name'] = name.strip()
+    write_config(config)
+
+def get_url_objects(config_path: str = "src/config.json") -> List[Dict[str, str]]:
     """
     Get fetch URLs as standardized objects from configuration file.
     Converts old format (strings) to new format (dicts with name and url).
@@ -63,7 +205,6 @@ def get_url_objects(config_path: str = "config.json") -> List[Dict[str, str]]:
             # Old format: convert string URL to object
             # Generate a name from the URL or use index
             try:
-                from urllib.parse import urlparse
                 parsed = urlparse(url_item)
                 domain = parsed.netloc.replace("www.", "").replace(".", "_")
                 path_parts = [p for p in parsed.path.split('/') if p]
