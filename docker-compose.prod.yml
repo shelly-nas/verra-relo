@@ -5,13 +5,9 @@ services:
     ports:
       - "9000:8080"
     volumes:
-      # Mount data directory to persist output files
-      - ind-data:/app/data
+      # Mount data directory to persist output files and config
+      - ./data:/app/data
     env_file:
       - .env
     environment:
       - PYTHONUNBUFFERED=1
-
-volumes:
-  ind-data:
-    driver: local

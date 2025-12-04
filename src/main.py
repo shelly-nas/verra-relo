@@ -10,7 +10,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s: %(message)s'
 )
 
-from typing import List
 import pandas as pd
 from utils import get_url_objects
 from web_client import PlaywrightWebClient
@@ -108,8 +107,8 @@ def main():
                         total_new_rows = 0
                         total_all_rows = 0
                         combined_new_rows_df = None
-                        for i, (total_rows_sheet, new_rows_sheet, new_rows_df_sheet) in enumerate(results):
-                            logger.info(f"Sheet {sheet_names[i]}: {total_rows_sheet} total rows, {new_rows_sheet} new rows")
+                        for sheet_idx, (total_rows_sheet, new_rows_sheet, new_rows_df_sheet) in enumerate(results):
+                            logger.info(f"Sheet {sheet_names[sheet_idx]}: {total_rows_sheet} total rows, {new_rows_sheet} new rows")
                             total_new_rows += new_rows_sheet
                             total_all_rows += total_rows_sheet
                             # Combine new rows from all sheets

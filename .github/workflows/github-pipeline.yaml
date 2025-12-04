@@ -30,7 +30,5 @@ jobs:
       registry_username: ${{ vars.REGISTRY_USERNAME }}
       registry_password: ${{ secrets.REGISTRY_PASSWORD }}
       env_file_content: |
-        SENDER_NAME=${{ vars.SENDER_NAME }}
         SMTP_USERNAME=${{ vars.SMTP_USERNAME }}
         SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
-        MAILING_LIST=${{ vars.MAILING_LIST }}

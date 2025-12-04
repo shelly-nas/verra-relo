@@ -98,12 +98,9 @@ class DataHandler:
             return False
         
         # Remove created_date column for comparison if it exists
-        df1_compare = df1.copy()
-        df2_compare = df2.copy()
-        
-        for df in [df1_compare, df2_compare]:
-            if 'created_date' in df.columns:
-                df.drop('created_date', axis=1, inplace=True)
+        cols_to_drop = ['created_date']
+        df1_compare = df1.drop(columns=[c for c in cols_to_drop if c in df1.columns], errors='ignore')
+        df2_compare = df2.drop(columns=[c for c in cols_to_drop if c in df2.columns], errors='ignore')
         
         # Compare based on unique identifier
         if unique_col not in df1_compare.columns or unique_col not in df2_compare.columns:
@@ -184,12 +181,9 @@ class DataHandler:
             bool: True if changes detected, False if no changes
         """
         # Remove created_date from comparison
-        new_data_compare = new_data.copy()
-        csv_backup_compare = csv_backup.copy()
-        
-        for df in [new_data_compare, csv_backup_compare]:
-            if 'created_date' in df.columns:
-                df.drop('created_date', axis=1, inplace=True)
+        cols_to_drop = ['created_date']
+        new_data_compare = new_data.drop(columns=[c for c in cols_to_drop if c in new_data.columns], errors='ignore')
+        csv_backup_compare = csv_backup.drop(columns=[c for c in cols_to_drop if c in csv_backup.columns], errors='ignore')
         
         are_equal = self._dataframes_are_equal(new_data_compare, csv_backup_compare, unique_col)
         changes_detected = not are_equal
@@ -517,6 +511,7 @@ class DataHandler:
             Tuple[str, int, int, Optional[pd.DataFrame]]: Full path of the file, total rows, new rows added, and the new rows DataFrame (or None)
         """
         filepath = os.path.join(self.data_directory, filename)
+        new_rows_df = None  # Initialize to ensure it's always defined
         
         try:
             unique_col = self._get_unique_column_name(dataframe)
@@ -556,9 +551,6 @@ class DataHandler:
                 
                 # Check if there are changes between new data and CSV backup
                 changes_detected = self._detect_data_changes(new_data, csv_backup, unique_col)
-                
-                # Track new rows DataFrame for attachment
-                new_rows_df = None
                 
                 if changes_detected:
                     # Flow 1: Changes detected - update CSV backup and Excel

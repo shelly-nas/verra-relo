@@ -2,7 +2,6 @@
 Email notification module for sending alerts when data changes are detected.
 """
 import smtplib
-import ssl
 import logging
 import os
 import json
@@ -31,13 +30,13 @@ class EmailNotifier:
     """
     
     def __init__(self):
-        """Initialize the email notifier with configuration from environment variables."""
+        """Initialize the email notifier with configuration."""
         self.smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
         self.smtp_port = int(os.getenv('SMTP_PORT', '587'))
         self.smtp_username = os.getenv('SMTP_USERNAME', '')
         self.smtp_password = os.getenv('SMTP_PASSWORD', '')
         self.sender_email = os.getenv('SENDER_EMAIL', self.smtp_username)
-        self.sender_name = os.getenv('SENDER_NAME', '')  # Optional display name for From header
+        self.sender_name = self._load_sender_name()
         self.mailing_list = self._load_mailing_list()
         self.enabled = self._is_enabled()
         
@@ -56,24 +55,36 @@ class EmailNotifier:
             return f"{self.sender_name} <{self.sender_email}>"
         return self.sender_email
     
-    def _load_mailing_list(self) -> List[str]:
+    def _load_sender_name(self) -> str:
         """
-        Load mailing list from environment variable or config file.
+        Load sender name from config file.
         
-        Environment variable MAILING_LIST should be comma-separated emails.
-        Alternatively, reads from config.json if 'mailing_list' key exists.
+        Reads from src/config.json 'sender_name' key.
         """
-        # First try environment variable
-        env_list = os.getenv('MAILING_LIST', '')
-        if env_list:
-            emails = [email.strip() for email in env_list.split(',') if email.strip()]
-            if emails:
-                return emails
-        
-        # Fall back to config.json
         try:
             config_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                os.path.dirname(os.path.abspath(__file__)),
+                'config.json'
+            )
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    return config.get('sender_name', 'IND Register Alerts')
+        except Exception as e:
+            logger.warning(f"Could not load sender name from config: {e}")
+        
+        return 'IND Register Alerts'
+    
+    def _load_mailing_list(self) -> List[str]:
+        """
+        Load mailing list from config file.
+        
+        Reads from src/config.json 'mailing_list' key.
+        Mailing list is managed via the web UI.
+        """
+        try:
+            config_path = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
                 'config.json'
             )
             if os.path.exists(config_path):

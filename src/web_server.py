@@ -6,20 +6,25 @@ import threading
 import time
 from datetime import datetime, timedelta
 from flask import Flask, render_template_string, jsonify, request
+from utils import get_scheduler_state, save_scheduler_state, get_mailing_list, save_mailing_list
 
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# Load persisted scheduler state from config
+_persisted_state = get_scheduler_state()
+
 # Global state for the scheduler
 scheduler_state = {
-    'is_running': False,
-    'interval_hours': 672,  # Every 4 weeks by default
-    'selected_day': 1,  # Monday by default (0=Sunday, 1=Monday, etc.)
-    'last_run': None,
-    'next_run': None,
+    'is_running': False,  # Always start stopped, will auto-start if was running
+    'interval_hours': _persisted_state.get('interval_hours', 672),
+    'selected_day': _persisted_state.get('selected_day', 1),
+    'last_run': _persisted_state.get('last_run'),
+    'next_run': _persisted_state.get('next_run'),
     'scheduler_thread': None,
-    'stop_event': threading.Event()
+    'stop_event': threading.Event(),
+    '_was_running': _persisted_state.get('is_running', False)  # Track if should auto-start
 }
 
 # Global state for batch process
@@ -409,22 +414,45 @@ HTML_TEMPLATE = """
         
         <div class="card">
             <div class="card-title">Email Notifications</div>
-            <div class="status-row">
-                <span class="status-label">Last email sent</span>
-                <span class="status-value" id="last-email-sent">Never</span>
+            
+            <div class="form-group">
+                <label class="form-label" for="mailing-list">Mailing List</label>
+                <textarea 
+                    id="mailing-list" 
+                    class="schedule-select" 
+                    style="min-height: 80px; resize: vertical; font-size: 0.875rem;"
+                    placeholder="Enter email addresses, one per line or comma-separated"
+                ></textarea>
+                <p style="color: #787774; font-size: 0.75rem; margin-top: 0.375rem;">
+                    Enter email addresses separated by commas or new lines
+                </p>
             </div>
-            <div class="status-row">
-                <span class="status-label">Subject</span>
-                <span class="status-value" id="last-email-subject" style="font-size: 0.8rem;">-</span>
+            
+            <div class="button-group" style="margin-top: 0.75rem; margin-bottom: 1.25rem;">
+                <button class="btn btn-primary" id="save-mailing-list-btn" onclick="saveMailingList()">Save Mailing List</button>
             </div>
-            <div class="status-row">
-                <span class="status-label">Summary</span>
-                <span class="status-value" id="last-email-summary" style="font-size: 0.8rem; color: #787774;">-</span>
+            
+            <div class="message" id="mailing-list-message"></div>
+            
+            <div style="border-top: 1px solid #e3e2e0; margin: 1.25rem 0; padding-top: 1.25rem;">
+                <div class="status-row">
+                    <span class="status-label">Last email sent</span>
+                    <span class="status-value" id="last-email-sent">Never</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Subject</span>
+                    <span class="status-value" id="last-email-subject" style="font-size: 0.8rem;">-</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Summary</span>
+                    <span class="status-value" id="last-email-summary" style="font-size: 0.8rem; color: #787774;">-</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Recipients</span>
+                    <span class="status-value" id="last-email-recipients">-</span>
+                </div>
             </div>
-            <div class="status-row">
-                <span class="status-label">Recipients</span>
-                <span class="status-value" id="last-email-recipients">-</span>
-            </div>
+            
             <p style="color: #787774; font-size: 0.875rem; margin: 1rem 0;">Send a test email to verify your SMTP configuration and mailing list.</p>
             <button class="btn btn-secondary" id="test-email-btn" onclick="sendTestEmail()">Send Test Email</button>
             <div class="message" id="email-message"></div>
@@ -459,6 +487,7 @@ HTML_TEMPLATE = """
             updateStatus();
             setupDayPicker();
             updateScheduleUI();
+            loadMailingList();
         });
         
         function setupDayPicker() {
@@ -733,6 +762,58 @@ HTML_TEMPLATE = """
                 btn.innerHTML = 'Send Test Email';
             }
         }
+        
+        async function loadMailingList() {
+            try {
+                const response = await fetch('/api/mailing-list');
+                const data = await response.json();
+                
+                const textarea = document.getElementById('mailing-list');
+                if (data.emails && data.emails.length > 0) {
+                    textarea.value = data.emails.join('\\n');
+                } else {
+                    textarea.value = '';
+                }
+            } catch (error) {
+                console.error('Failed to load mailing list:', error);
+            }
+        }
+        
+        async function saveMailingList() {
+            const btn = document.getElementById('save-mailing-list-btn');
+            const textarea = document.getElementById('mailing-list');
+            
+            // Parse emails from textarea (split by newlines and commas)
+            const text = textarea.value;
+            const emails = text
+                .split(/[,\\n]+/)
+                .map(e => e.trim())
+                .filter(e => e.length > 0);
+            
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Saving...';
+            
+            try {
+                const response = await fetch('/api/mailing-list', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ emails: emails })
+                });
+                const data = await response.json();
+                
+                showMessage('mailing-list-message', data.message, data.success ? 'success' : 'error');
+                
+                // Reload to show cleaned up list
+                if (data.success) {
+                    await loadMailingList();
+                }
+            } catch (error) {
+                showMessage('mailing-list-message', 'Failed to save mailing list', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Save Mailing List';
+            }
+        }
     </script>
 </body>
 </html>
@@ -755,6 +836,9 @@ def run_batch_process():
         scheduler_state['last_run'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         batch_state['last_result'] = 'success'
         batch_state['last_message'] = 'Batch process completed successfully'
+        
+        # Persist scheduler state with updated last_run
+        save_scheduler_state(scheduler_state)
         
         # Get details from main module
         run_info = get_last_run_info()
@@ -901,6 +985,9 @@ def toggle_scheduler():
         scheduler_state['next_run'] = None
         scheduler_state['stop_event'].clear()
         
+        # Persist state
+        save_scheduler_state(scheduler_state)
+        
         return jsonify({
             'success': True,
             'message': 'Scheduler stopped'
@@ -915,6 +1002,9 @@ def toggle_scheduler():
         thread = threading.Thread(target=scheduler_loop, daemon=True)
         scheduler_state['scheduler_thread'] = thread
         thread.start()
+        
+        # Persist state
+        save_scheduler_state(scheduler_state)
         
         # Format interval for message
         day_names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -943,6 +1033,9 @@ def set_interval():
     scheduler_state['interval_hours'] = interval
     scheduler_state['selected_day'] = selected_day
     
+    # Persist state
+    save_scheduler_state(scheduler_state)
+    
     return jsonify({
         'success': True,
         'message': 'Schedule updated'
@@ -959,7 +1052,7 @@ def send_test_email():
     if not notifier.enabled:
         return jsonify({
             'success': False,
-            'message': 'Email notifications not configured. Set SMTP_USERNAME, SMTP_PASSWORD, and MAILING_LIST in .env file.'
+            'message': 'Email notifications not configured. Set SMTP_USERNAME and SMTP_PASSWORD in .env file, and add recipients to the mailing list above.'
         })
     
     # Use the notifier's built-in test email method which includes CSV attachment
@@ -977,8 +1070,55 @@ def send_test_email():
         })
 
 
+@app.route('/api/mailing-list', methods=['GET'])
+def get_mailing_list_api():
+    """Get the current mailing list."""
+    emails = get_mailing_list()
+    return jsonify({
+        'success': True,
+        'emails': emails
+    })
+
+
+@app.route('/api/mailing-list', methods=['POST'])
+def set_mailing_list_api():
+    """Update the mailing list."""
+    data = request.get_json() or {}
+    emails = data.get('emails', [])
+    
+    # Validate that it's a list
+    if not isinstance(emails, list):
+        return jsonify({
+            'success': False,
+            'message': 'Invalid format: emails must be a list'
+        })
+    
+    # Basic email validation
+    valid_emails = []
+    for email in emails:
+        email = str(email).strip()
+        if email and '@' in email:
+            valid_emails.append(email)
+    
+    save_mailing_list(valid_emails)
+    
+    return jsonify({
+        'success': True,
+        'message': f'Mailing list saved with {len(valid_emails)} recipient(s)'
+    })
+
+
 def start_server(host='0.0.0.0', port=8080, debug=False):
     """Start the Flask web server."""
+    # Auto-start scheduler if it was running before restart
+    if scheduler_state.get('_was_running', False):
+        logger.info("Auto-starting scheduler (was running before restart)")
+        scheduler_state['is_running'] = True
+        scheduler_state['stop_event'].clear()
+        thread = threading.Thread(target=scheduler_loop, daemon=True)
+        scheduler_state['scheduler_thread'] = thread
+        thread.start()
+    
     logger.info(f"Starting web server on {host}:{port}")
     app.run(host=host, port=port, debug=debug, threaded=True)
 
