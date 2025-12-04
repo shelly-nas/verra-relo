@@ -3,6 +3,7 @@ Utility functions for reading configuration and handling common tasks.
 """
 import json
 import os
+import shutil
 from typing import List, Dict
 from urllib.parse import urlparse
 
@@ -10,6 +11,7 @@ from urllib.parse import urlparse
 def get_config_path(config_path: str = "src/config.json") -> str:
     """
     Get the absolute path to the configuration file.
+    Checks for persistent config in data directory first, falls back to default.
     
     Args:
         config_path (str): Path to the configuration file
@@ -17,9 +19,29 @@ def get_config_path(config_path: str = "src/config.json") -> str:
     Returns:
         str: Absolute path to the configuration file
     """
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Check for persistent config in data directory first
+    data_config_path = os.path.join(project_root, "data", "config.json")
+    default_config_path = os.path.join(project_root, "src", "config.json")
+    
+    # If persistent config exists in data directory, use it
+    if os.path.isfile(data_config_path):
+        return data_config_path
+    
+    # If persistent config doesn't exist but default does, copy it to data directory
+    if os.path.isfile(default_config_path):
+        # Ensure data directory exists
+        os.makedirs(os.path.dirname(data_config_path), exist_ok=True)
+        try:
+            shutil.copy2(default_config_path, data_config_path)
+            return data_config_path
+        except (IOError, OSError):
+            # If copy fails, fall back to default
+            pass
+    
+    # Fall back to original behavior for backwards compatibility
     if not os.path.isabs(config_path):
-        # If relative path, make it relative to project root
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         config_path = os.path.join(project_root, config_path)
     return config_path
 

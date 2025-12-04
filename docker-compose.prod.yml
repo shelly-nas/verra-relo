@@ -7,8 +7,8 @@ services:
     volumes:
       # Mount data directory to persist output files
       - ./data:/app/data
-      # Mount config file to persist configuration changes across deployments
-      - ./config.json:/app/src/config.json
+      # Config is baked into the image; persistent config stored in data/config.json
+      # and copied into place by the application if needed
     env_file:
       - .env
     environment:
