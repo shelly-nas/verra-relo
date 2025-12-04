@@ -5,8 +5,10 @@ services:
     ports:
       - "9000:8080"
     volumes:
-      # Mount data directory to persist output files and config
+      # Mount data directory to persist output files
       - ./data:/app/data
+      # Mount config file to persist configuration changes across deployments
+      - ./config.json:/app/src/config.json
     env_file:
       - .env
     environment:
