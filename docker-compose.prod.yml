@@ -2,8 +2,13 @@ services:
   verra-ind-alerts:
     image: ${REGISTRY}/verra-ind-alerts:${IMAGE_TAG:-latest}
     container_name: verra-ind-alerts
-    ports:
-      - "9000:8080"
+    # ports:
+    #   - "9000:8080"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.discounts.rule=Host(`ind.verra.nl`)"
+      - "traefik.http.routers.discounts.entrypoints=web"
+      - "traefik.http.services.discounts.loadbalancer.server.port=8080"
     volumes:
       # Mount data directory to persist output files
       - ./data:/app/data
