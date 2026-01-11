@@ -6,7 +6,7 @@ services:
     #   - "9000:8080"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.verra-ind.rule=Host(`ind.verra.nl`)"
+      - "traefik.http.routers.verra-ind.rule=Host(`ind.verra.shelly-nas.nl`)"
       - "traefik.http.routers.verra-ind.entrypoints=web"
       - "traefik.http.services.verra-ind.loadbalancer.server.port=8080"
     volumes:
