@@ -89,23 +89,36 @@ def write_config(config: dict, config_path: str = "src/config.json") -> None:
 def get_scheduler_state() -> dict:
     """
     Get scheduler state from configuration file.
+    Automatically migrates old interval_hours to interval_days if needed.
     
     Returns:
-        dict: Scheduler state with keys: is_running, interval_hours, selected_day, last_run, next_run
+        dict: Scheduler state with keys: is_running, interval_days, selected_day, last_run, next_run
     """
     try:
         config = read_config()
-        return config.get('scheduler_state', {
-            'is_running': False,
-            'interval_hours': 672,
-            'selected_day': 1,
-            'last_run': None,
-            'next_run': None
-        })
+        state = config.get('scheduler_state', {})
+        
+        # Migrate old interval_hours to interval_days if present
+        if 'interval_hours' in state and 'interval_days' not in state:
+            interval_hours = state.get('interval_hours', 672)
+            state['interval_days'] = interval_hours // 24  # Convert hours to days
+            del state['interval_hours']
+            # Save migrated state back to config
+            config['scheduler_state'] = state
+            write_config(config)
+        
+        # Return state with defaults
+        return {
+            'is_running': state.get('is_running', False),
+            'interval_days': state.get('interval_days', 28),
+            'selected_day': state.get('selected_day', 1),
+            'last_run': state.get('last_run'),
+            'next_run': state.get('next_run')
+        }
     except (FileNotFoundError, json.JSONDecodeError):
         return {
             'is_running': False,
-            'interval_hours': 672,
+            'interval_days': 28,
             'selected_day': 1,
             'last_run': None,
             'next_run': None
@@ -115,6 +128,7 @@ def get_scheduler_state() -> dict:
 def save_scheduler_state(state: dict) -> None:
     """
     Save scheduler state to configuration file.
+    Ensures only interval_days is saved (not interval_hours).
     
     Args:
         state (dict): Scheduler state to save
@@ -122,12 +136,24 @@ def save_scheduler_state(state: dict) -> None:
     try:
         config = read_config()
     except (FileNotFoundError, json.JSONDecodeError):
-        config = {'fetch_urls': [], 'mailing_list': []}
+        # Create minimal config structure preserving defaults
+        config = {
+            'fetch_urls': [],
+            'mailing_list': [],
+            'sender_name': 'IND Register Alerts'
+        }
+    
+    # Get interval_days, migrating from interval_hours if needed
+    interval_days = state.get('interval_days')
+    if interval_days is None and 'interval_hours' in state:
+        interval_days = state.get('interval_hours', 672) // 24
+    if interval_days is None:
+        interval_days = 28
     
     # Only save persistent state (not thread objects)
     config['scheduler_state'] = {
         'is_running': state.get('is_running', False),
-        'interval_hours': state.get('interval_hours', 672),
+        'interval_days': interval_days,
         'selected_day': state.get('selected_day', 1),
         'last_run': state.get('last_run'),
         'next_run': state.get('next_run')
@@ -162,7 +188,19 @@ def save_mailing_list(emails: List[str]) -> None:
     try:
         config = read_config()
     except (FileNotFoundError, json.JSONDecodeError):
-        config = {'fetch_urls': [], 'mailing_list': []}
+        # Create minimal config structure preserving defaults
+        config = {
+            'fetch_urls': [],
+            'mailing_list': [],
+            'sender_name': 'IND Register Alerts',
+            'scheduler_state': {
+                'is_running': False,
+                'interval_days': 28,
+                'selected_day': 1,
+                'last_run': None,
+                'next_run': None
+            }
+        }
     
     # Clean and validate emails
     clean_emails = [email.strip() for email in emails if email.strip()]

@@ -18,7 +18,7 @@ _persisted_state = get_scheduler_state()
 # Global state for the scheduler
 scheduler_state = {
     'is_running': False,  # Always start stopped, will auto-start if was running
-    'interval_hours': _persisted_state.get('interval_hours', 672),
+    'interval_days': _persisted_state.get('interval_days', 28),
     'selected_day': _persisted_state.get('selected_day', 1),
     'last_run': _persisted_state.get('last_run'),
     'next_run': _persisted_state.get('next_run'),
@@ -554,24 +554,24 @@ HTML_TEMPLATE = """
             summaryEl.textContent = summary;
         }
         
-        function getIntervalHours() {
+        function getIntervalDays() {
             const scheduleType = document.getElementById('schedule-type').value;
             switch (scheduleType) {
-                case 'daily': return 24;
-                case 'weekly': return 168;
-                case 'biweekly': return 336;
-                case 'monthly': return 672;
-                default: return 168;
+                case 'daily': return 1;
+                case 'weekly': return 7;
+                case 'biweekly': return 14;
+                case 'monthly': return 28;
+                default: return 7;
             }
         }
         
-        function setScheduleFromHours(hours) {
+        function setScheduleFromDays(days) {
             const scheduleSelect = document.getElementById('schedule-type');
-            if (hours <= 24) {
+            if (days <= 1) {
                 scheduleSelect.value = 'daily';
-            } else if (hours <= 168) {
+            } else if (days <= 7) {
                 scheduleSelect.value = 'weekly';
-            } else if (hours <= 336) {
+            } else if (days <= 14) {
                 scheduleSelect.value = 'biweekly';
             } else {
                 scheduleSelect.value = 'monthly';
@@ -634,8 +634,8 @@ HTML_TEMPLATE = """
                 lastEmailRecipientsEl.textContent = data.email_last_recipients ? `${data.email_last_recipients} recipient(s)` : '-';
                 
                 // Set schedule from server state
-                if (data.interval_hours) {
-                    setScheduleFromHours(data.interval_hours);
+                if (data.interval_days) {
+                    setScheduleFromDays(data.interval_days);
                 }
                 if (data.selected_day !== undefined) {
                     selectedDay = data.selected_day;
@@ -714,13 +714,13 @@ HTML_TEMPLATE = """
         }
         
         async function toggleScheduler() {
-            const interval = getIntervalHours();
+            const interval = getIntervalDays();
             
             try {
                 const response = await fetch('/api/scheduler/toggle', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ interval_hours: interval, selected_day: selectedDay })
+                    body: JSON.stringify({ interval_days: interval, selected_day: selectedDay })
                 });
                 const data = await response.json();
                 
@@ -732,12 +732,12 @@ HTML_TEMPLATE = """
         }
         
         async function saveSchedule() {
-            const interval = getIntervalHours();
+            const interval = getIntervalDays();
             try {
                 await fetch('/api/scheduler/interval', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ interval_hours: interval, selected_day: selectedDay })
+                    body: JSON.stringify({ interval_days: interval, selected_day: selectedDay })
                 });
             } catch (error) {
                 console.error('Failed to save schedule:', error);
@@ -831,7 +831,9 @@ def run_batch_process():
     batch_state['last_run_details'] = None
     
     try:
-        logger.info("Starting batch process...")
+        logger.info("=" * 60)
+        logger.info("BATCH PROCESS STARTED")
+        logger.info("=" * 60)
         batch_main()
         scheduler_state['last_run'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         batch_state['last_result'] = 'success'
@@ -851,10 +853,12 @@ def run_batch_process():
             email_state['last_summary'] = run_info.get('email_summary')
             email_state['last_recipients'] = run_info.get('email_recipients', 0)
         
-        logger.info("Batch process completed successfully")
+        logger.info("=" * 60)
+        logger.info("BATCH PROCESS COMPLETED")
+        logger.info("=" * 60)
         return True, "Batch process completed successfully"
     except Exception as e:
-        logger.error(f"Batch process failed: {e}")
+        logger.error(f"BATCH PROCESS FAILED: {e}")
         batch_state['last_result'] = 'error'
         batch_state['last_message'] = f'Batch process failed: {str(e)}'
         return False, f"Batch process failed: {str(e)}"
@@ -862,68 +866,55 @@ def run_batch_process():
         batch_state['is_running'] = False
 
 
-def calculate_next_run_at_midnight(interval_hours: int, selected_day: int) -> datetime:
+def get_next_midnight_on_day(selected_day: int) -> datetime:
     """
-    Calculate the next run time at 00:00 based on interval and selected day.
+    Get the next occurrence of 00:00:00 on the specified day of week.
     
     Args:
-        interval_hours: Interval in hours (24=daily, 168=weekly, 336=bi-weekly, 672=monthly)
-        selected_day: Day of week (0=Sunday, 1=Monday, etc.)
+        selected_day: Day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
     
     Returns:
-        datetime: Next scheduled run at 00:00
+        datetime: Next occurrence at 00:00:00
     """
     now = datetime.now()
     
-    if interval_hours <= 24:
-        # Daily: run at next midnight
-        next_run = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        if next_run <= now:
-            next_run = next_run + timedelta(days=1)
-    else:
-        # Weekly or longer: run at midnight on the selected day
-        # Convert selected_day (0=Sunday) to Python weekday (0=Monday)
-        # Python: 0=Monday, 6=Sunday | Our format: 0=Sunday, 6=Saturday
-        python_weekday = (selected_day - 1) % 7 if selected_day > 0 else 6
-        
-        # Find the next occurrence of the selected day
-        days_ahead = python_weekday - now.weekday()
-        if days_ahead < 0:  # Target day already happened this week
-            days_ahead += 7
-        elif days_ahead == 0 and now.hour >= 0 and now.minute > 0:  # Target day is today but past midnight
-            days_ahead += 7
-            
-        next_run = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=days_ahead)
-        
-        # For bi-weekly (336h) or monthly (672h), add extra weeks if needed
-        if interval_hours > 168:
-            weeks_to_add = (interval_hours // 168) - 1
-            next_run += timedelta(weeks=weeks_to_add)
+    # Convert our format (0=Sunday) to Python's (0=Monday, 6=Sunday)
+    target_weekday = (selected_day - 1) % 7 if selected_day > 0 else 6
     
-    return next_run
+    # Start checking from tomorrow to avoid same-day re-runs
+    next_candidate = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Find the next occurrence of target weekday
+    while next_candidate.weekday() != target_weekday:
+        next_candidate += timedelta(days=1)
+    
+    return next_candidate
 
 
 def scheduler_loop():
     """Background scheduler loop."""
     while not scheduler_state['stop_event'].is_set():
-        # Calculate next run time at midnight on the appropriate day
-        next_run = calculate_next_run_at_midnight(
-            scheduler_state['interval_hours'],
-            scheduler_state['selected_day']
-        )
+        # Get next scheduled run at 00:00:00 on the target day
+        next_run = get_next_midnight_on_day(scheduler_state['selected_day'])
+        
+        # For bi-weekly or monthly, add extra weeks
+        interval_days = scheduler_state['interval_days']
+        if interval_days > 7:
+            weeks_to_add = (interval_days // 7) - 1
+            next_run += timedelta(weeks=weeks_to_add)
+        
         scheduler_state['next_run'] = next_run.strftime('%Y-%m-%d %H:%M:%S')
         
-        # Calculate seconds until next run
+        # Wait until that exact time
         seconds_until_run = (next_run - datetime.now()).total_seconds()
-        if seconds_until_run < 0:
-            seconds_until_run = 0
+        logger.info(f"Next scheduled run: {next_run.strftime('%Y-%m-%d %H:%M:%S')} (in {seconds_until_run/3600:.1f} hours)")
         
-        # Wait for the interval or until stopped
         if scheduler_state['stop_event'].wait(timeout=seconds_until_run):
-            break  # Stop event was set
+            break  # Scheduler was stopped
         
-        # Run the batch process
+        # Time to run
         if not scheduler_state['stop_event'].is_set():
+            logger.info("Triggering scheduled batch process")
             run_batch_process()
 
 
@@ -938,7 +929,7 @@ def get_status():
     """Get the current scheduler status."""
     return jsonify({
         'is_running': scheduler_state['is_running'],
-        'interval_hours': scheduler_state['interval_hours'],
+        'interval_days': scheduler_state['interval_days'],
         'selected_day': scheduler_state['selected_day'],
         'last_run': scheduler_state['last_run'],
         'next_run': scheduler_state['next_run'] if scheduler_state['is_running'] else None,
@@ -973,7 +964,7 @@ def run_now():
 def toggle_scheduler():
     """Start or stop the scheduler."""
     data = request.get_json() or {}
-    interval = data.get('interval_hours', scheduler_state['interval_hours'])
+    interval = data.get('interval_days', scheduler_state['interval_days'])
     selected_day = data.get('selected_day', scheduler_state['selected_day'])
     
     if scheduler_state['is_running']:
@@ -988,13 +979,15 @@ def toggle_scheduler():
         # Persist state
         save_scheduler_state(scheduler_state)
         
+        logger.info("Scheduler STOPPED")
+        
         return jsonify({
             'success': True,
             'message': 'Scheduler stopped'
         })
     else:
         # Start the scheduler
-        scheduler_state['interval_hours'] = interval
+        scheduler_state['interval_days'] = interval
         scheduler_state['selected_day'] = selected_day
         scheduler_state['is_running'] = True
         scheduler_state['stop_event'].clear()
@@ -1008,14 +1001,16 @@ def toggle_scheduler():
         
         # Format interval for message
         day_names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-        if interval <= 24:
+        if interval <= 1:
             schedule_desc = 'daily at 00:00'
-        elif interval <= 168:
+        elif interval <= 7:
             schedule_desc = f'every {day_names[selected_day]} at 00:00'
-        elif interval <= 336:
+        elif interval <= 14:
             schedule_desc = f'every other {day_names[selected_day]} at 00:00'
         else:
             schedule_desc = f'every 4th {day_names[selected_day]} at 00:00'
+        
+        logger.info(f"Scheduler STARTED - Schedule: {schedule_desc} (interval: {interval} days, day: {day_names[selected_day]})")
         
         return jsonify({
             'success': True,
@@ -1027,14 +1022,29 @@ def toggle_scheduler():
 def set_interval():
     """Update the scheduler interval and selected day."""
     data = request.get_json() or {}
-    interval = data.get('interval_hours', 672)
+    interval = data.get('interval_days', 28)
     selected_day = data.get('selected_day', scheduler_state['selected_day'])
     
-    scheduler_state['interval_hours'] = interval
+    old_interval = scheduler_state['interval_days']
+    old_day = scheduler_state['selected_day']
+    
+    scheduler_state['interval_days'] = interval
     scheduler_state['selected_day'] = selected_day
     
     # Persist state
     save_scheduler_state(scheduler_state)
+    
+    day_names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    if interval <= 1:
+        schedule_desc = 'daily at 00:00'
+    elif interval <= 7:
+        schedule_desc = f'every {day_names[selected_day]} at 00:00'
+    elif interval <= 14:
+        schedule_desc = f'every other {day_names[selected_day]} at 00:00'
+    else:
+        schedule_desc = f'every 4th {day_names[selected_day]} at 00:00'
+    
+    logger.info(f"Schedule CHANGED - New: {schedule_desc} (interval: {interval} days, day: {day_names[selected_day]}) | Previous: {old_interval} days, {day_names[old_day]}")
     
     return jsonify({
         'success': True,
@@ -1100,7 +1110,10 @@ def set_mailing_list_api():
         if email and '@' in email:
             valid_emails.append(email)
     
+    old_list = get_mailing_list()
     save_mailing_list(valid_emails)
+    
+    logger.info(f"Mailing list UPDATED - Recipients: {len(valid_emails)} ({', '.join(valid_emails)}) | Previous: {len(old_list)}")
     
     return jsonify({
         'success': True,
@@ -1110,14 +1123,16 @@ def set_mailing_list_api():
 
 def start_server(host='0.0.0.0', port=8080, debug=False):
     """Start the Flask web server."""
-    # Auto-start scheduler if it was running before restart
+    # Auto-start scheduler if it was running before
     if scheduler_state.get('_was_running', False):
-        logger.info("Auto-starting scheduler (was running before restart)")
+        logger.info("Starting scheduler (auto-start from previous state)")
         scheduler_state['is_running'] = True
         scheduler_state['stop_event'].clear()
         thread = threading.Thread(target=scheduler_loop, daemon=True)
         scheduler_state['scheduler_thread'] = thread
         thread.start()
+    else:
+        logger.info("Scheduler is stopped (manual start required)")
     
     logger.info(f"Starting web server on {host}:{port}")
     app.run(host=host, port=port, debug=debug, threaded=True)

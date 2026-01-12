@@ -13,7 +13,7 @@
   "sender_name": "IND Register Alerts",
   "scheduler_state": {
     "is_running": true,
-    "interval_hours": 168,
+    "interval_days": 7,
     "selected_day": 1,
     "last_run": null,
     "next_run": null
