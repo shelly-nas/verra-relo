@@ -43,8 +43,6 @@ class DataHandler:
         
         os.makedirs(self.data_directory, exist_ok=True)
         os.makedirs(self.csv_backup_directory, exist_ok=True)
-        logger.info(f"Data directory ensured: {self.data_directory}")
-        logger.info(f"CSV backup directory ensured: {self.csv_backup_directory}")
     
     def _load_metadata(self) -> Dict:
         """Load metadata about files and their checksums."""

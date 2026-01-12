@@ -39,12 +39,9 @@ def main():
     Main function to orchestrate the data fetching and saving process.
     """
     try:
-        # Initialize components
-        logger.info("Starting data fetching process...")
-        
         # Get URL objects from config
         url_objects = get_url_objects()
-        logger.info(f"Found {len(url_objects)} URLs to process")
+        logger.info(f"Processing {len(url_objects)} data sources...")
         
         # Initialize Data handler and email notifier
         data_handler = DataHandler()
@@ -59,17 +56,17 @@ def main():
                 name = url_obj['name']
                 url = url_obj['url']
                 
-                logger.info(f"Processing URL {i}/{len(url_objects)}: {name} ({url})")
+                logger.info(f"[{i}/{len(url_objects)}] {name}...")
                 
                 try:
                     # Fetch tables from the URL
                     dataframes = web_client.get_page_tables(url)
                     
                     if not dataframes:
-                        logger.warning(f"No tables found on page: {name} ({url})")
+                        logger.warning(f"  ✗ No tables found")
                         continue
                     
-                    logger.info(f"Extracted {len(dataframes)} table(s) from {name}")
+                    logger.info(f"  ✓ Extracted {len(dataframes)} table(s)")
                     
                     # Use the name from config for the filename (no timestamp)
                     filename = data_handler.generate_filename(name, timestamp=False)
@@ -82,8 +79,7 @@ def main():
                             filename, 
                             sheet_name="data"
                         )
-                        logger.info(f"Successfully updated data from {name} to {filepath}")
-                        logger.info(f"Total rows: {total_rows}, New rows added: {new_rows}")
+                        logger.info(f"  ✓ {total_rows} total rows, +{new_rows} new")
                         
                         # Track changes for email notification
                         if new_rows > 0:
@@ -167,36 +163,28 @@ def main():
         # Determine email subject based on changes
         if total_new > 0:
             email_subject = f"IND Register Update: {total_new} new entries detected"
-            logger.info(f"Changes detected: {total_new} new rows across {sources_with_changes} source(s)")
+            logger.info(f"✓ DIFF: {total_new} new entries across {sources_with_changes} source(s)")
+            for change in all_changes:
+                logger.info(f"  • {change['name']}: +{change['new_rows']} new entries")
         else:
             email_subject = "IND Register Update: No new entries (status check)"
-            logger.info("No changes detected, sending status confirmation email")
+            logger.info("✓ DIFF: No changes detected")
         
         # Send email
+        recipients_str = ', '.join(email_notifier.mailing_list) if email_notifier.mailing_list else 'none'
         if email_notifier.send_changes_notification(all_sources_status, subject=email_subject):
-            logger.info("Email notification sent successfully")
+            logger.info(f"✓ EMAIL: Sent to {len(email_notifier.mailing_list)} recipients ({recipients_str})")
             _last_run_info['email_sent'] = True
             _last_run_info['email_sent_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             _last_run_info['email_subject'] = email_subject
             _last_run_info['email_summary'] = f"{total_new} new entries across {sources_with_changes} source(s)"
             _last_run_info['email_recipients'] = len(email_notifier.mailing_list)
         else:
-            logger.info("Email notification skipped or failed")
+            logger.warning("✗ EMAIL: Failed to send or disabled")
             _last_run_info['email_sent'] = False
         
-        # List all created files
-        excel_files = data_handler.list_excel_files()
-        if excel_files:
-            logger.info("Created Excel files:")
-            for file in excel_files:
-                logger.info(f"  - {file}")
-        
-        # List CSV backup files
-        csv_backups = data_handler.list_csv_backups()
-        if csv_backups:
-            logger.info("CSV backup files:")
-            for file in csv_backups:
-                logger.info(f"  - {file}")
+        # Summary
+        logger.info(f"✓ SUMMARY: Processed {sources_processed} sources, {total_new} new entries, emails sent to {len(email_notifier.mailing_list)} recipients")
     
     except Exception as e:
         logger.error(f"Fatal error in main process: {e}")

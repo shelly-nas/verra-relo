@@ -13,6 +13,7 @@ from email.mime.base import MIMEBase
 from email import encoders
 from typing import List, Dict, Optional
 from datetime import datetime
+from utils import get_mailing_list, get_sender_name
 
 try:
     import pandas as pd
@@ -36,18 +37,14 @@ class EmailNotifier:
         self.smtp_username = os.getenv('SMTP_USERNAME', '')
         self.smtp_password = os.getenv('SMTP_PASSWORD', '')
         self.sender_email = os.getenv('SENDER_EMAIL', self.smtp_username)
-        self.sender_name = self._load_sender_name()
-        self.mailing_list = self._load_mailing_list()
         self.enabled = self._is_enabled()
         
-        if self.enabled:
-            logger.info(f"Email notifier initialized with {len(self.mailing_list)} recipients")
-        else:
-            logger.info("Email notifier is disabled (missing SMTP configuration)")
+        # Initialization complete
     
     def _is_enabled(self) -> bool:
         """Check if email notifications are enabled (SMTP configured)."""
-        return bool(self.smtp_username and self.smtp_password and self.mailing_list)
+        mailing_list = self._load_mailing_list()
+        return bool(self.smtp_username and self.smtp_password and mailing_list)
     
     def _get_formatted_sender(self) -> str:
         """Get the formatted sender string with optional display name."""
@@ -56,47 +53,22 @@ class EmailNotifier:
         return self.sender_email
     
     def _load_sender_name(self) -> str:
-        """
-        Load sender name from config file.
-        
-        Reads from src/config.json 'sender_name' key.
-        """
-        try:
-            config_path = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                'config.json'
-            )
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-                    return config.get('sender_name', 'IND Register Alerts')
-        except Exception as e:
-            logger.warning(f"Could not load sender name from config: {e}")
-        
-        return 'IND Register Alerts'
+        """Load sender name from config file using centralized config function."""
+        return get_sender_name()
     
     def _load_mailing_list(self) -> List[str]:
-        """
-        Load mailing list from config file.
-        
-        Reads from src/config.json 'mailing_list' key.
-        Mailing list is managed via the web UI.
-        """
-        try:
-            config_path = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)),
-                'config.json'
-            )
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-                    mailing_list = config.get('mailing_list', [])
-                    if isinstance(mailing_list, list):
-                        return mailing_list
-        except Exception as e:
-            logger.warning(f"Could not load mailing list from config: {e}")
-        
-        return []
+        """Load mailing list from config file using centralized config function."""
+        return get_mailing_list()
+    
+    @property
+    def sender_name(self) -> str:
+        """Get the current sender name (reloads from config each time)."""
+        return self._load_sender_name()
+    
+    @property
+    def mailing_list(self) -> List[str]:
+        """Get the current mailing list (reloads from config each time)."""
+        return self._load_mailing_list()
     
     def send_changes_notification(
         self, 
@@ -118,7 +90,6 @@ class EmailNotifier:
             bool: True if email sent successfully, False otherwise
         """
         if not self.enabled:
-            logger.info("Email notifications disabled, skipping send")
             return False
         
         # Always send email, even if no changes (to confirm script is running)
@@ -157,18 +128,13 @@ class EmailNotifier:
         all_new_rows = []
         for change in changes:
             new_rows_df = change.get('new_rows_df')
-            logger.info(f"Processing change: {change.get('name')}, new_rows_df is None: {new_rows_df is None}")
-            if new_rows_df is not None:
-                logger.info(f"new_rows_df.empty: {new_rows_df.empty}, shape: {new_rows_df.shape}")
             if new_rows_df is not None and not new_rows_df.empty:
                 # Add source name column to identify which source the row came from
                 df_copy = new_rows_df.copy()
                 df_copy.insert(0, 'source', change.get('name', 'Unknown'))
                 all_new_rows.append(df_copy)
-                logger.info(f"Added {len(df_copy)} rows to attachment")
         
         if not all_new_rows:
-            logger.info("No new rows data available for CSV attachment")
             return None
         
         try:
@@ -183,8 +149,6 @@ class EmailNotifier:
             # Create filename with timestamp
             date_str = datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f"new_entries_{date_str}.csv"
-            
-            logger.info(f"Created CSV attachment with {len(combined_df)} new entries")
             
             return {
                 'filename': filename,
