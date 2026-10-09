@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     name: Build and Push VERRA IND Alerts
-    uses: shelly-nas/shared-workflows/.github/workflows/build-push.yml@main
+    uses: shelly-nas/shared-workflows/.github/workflows/build-push-image.yml@main
     with:
       registry: ${{ vars.REGISTRY_URL }}
       image_tag: ${{ vars.REGISTRY_URL }}/verra-ind-alerts:latest
@@ -20,7 +20,7 @@ jobs:
     name: Deploy from Registry
     needs: [build]
     if: ${{ success() }}
-    uses: shelly-nas/shared-workflows/.github/workflows/deploy.yml@main
+    uses: shelly-nas/shared-workflows/.github/workflows/deploy-production.yml@main
     with:
       registry: ${{ vars.REGISTRY_URL }}
       deploy_directory: /volume1/docker/verra-ind-alerts
